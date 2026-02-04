@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "896018341442",
+    "project_id": "stockbuddy-33948",
+    "storage_bucket": "stockbuddy-33948.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:896018341442:android:171be8cca41d8cb1edd7db",
+        "android_client_info": {
+          "package_name": "com.example.stock_buddy"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBNLG2W0zF7MN7py0U19KMsIQ_Ot6GTTus"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
