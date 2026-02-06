@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -35,7 +36,6 @@ import 'SplashScreen.dart';
 import 'firebase_options.dart';
 import 'notification_services.dart';
 
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(
@@ -43,18 +43,18 @@ Future<void> main() async {
   );
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
+  // Initialize notifications and request permissions immediately
+  final notificationServices = NotificationServices();
+  await notificationServices.requestNotificationPermission();
+
   runApp(const MyApp());
 }
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-
   @override
   Widget build(BuildContext context) {
-
-
     return MultiProvider(
       providers: [
         Provider(create: (_) => LocalStorageService()),
@@ -93,7 +93,8 @@ class MyApp extends StatelessWidget {
               baseUrl: ApiConstants.baseUrl, // Replace with your actual API URL
               token: authProvider.token ?? '',
             );
-            return StockTransferProvider(stockTransferService: stockTransferService);
+            return StockTransferProvider(
+                stockTransferService: stockTransferService);
           },
         ),
         ChangeNotifierProvider<TransferProvider>(
@@ -160,14 +161,12 @@ class MyApp extends StatelessWidget {
           useMaterial3: true,
         ),
         home: const AuthWrapper(),
-
       ),
     );
   }
 }
 
-
-Future<void> _firebaseMessagingBackgroundHandler ( RemoteMessage message) async {
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp();
   print(message.notification!.title.toString());
 }
@@ -193,12 +192,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
     super.initState();
     _authCheckStartTime = DateTime.now();
     _checkAuthStatus();
-    if(Platform.isIOS||Platform.isAndroid){
+    if (Platform.isIOS || Platform.isAndroid) {
       _setupNotifications();
     }
   }
 
   void _setupNotifications() {
+    // Permission is now requested in main(), but we call it here too as a safety measure
     notificationServices.requestNotificationPermission();
     notificationServices.firebaseInit(context);
     notificationServices.isTokenRefresh();
@@ -206,10 +206,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _fetchDeviceToken() async {
+    developer.log("_fetchDeviceToken() Run");
     final deviceToken = await notificationServices.getDeviceToken();
     setState(() {
       token = deviceToken;
     });
+    developer.log("FCM Token: $token");
     print("FCM Token: $token");
   }
 
@@ -221,7 +223,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
       await authProvider.initialize();
 
       // Check if we have a token locally first
-      final hasLocalToken = authProvider.token != null && authProvider.token!.isNotEmpty;
+      final hasLocalToken =
+          authProvider.token != null && authProvider.token!.isNotEmpty;
 
       if (!hasLocalToken) {
         // No token found, user is not logged in
@@ -244,7 +247,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
         setState(() {
           _isLoggedIn = isValid;
           _isLoading = false;
-          _errorMessage = isValid ? null : 'Session expired. Please login again.';
+          _errorMessage =
+              isValid ? null : 'Session expired. Please login again.';
         });
       }
     } catch (e) {

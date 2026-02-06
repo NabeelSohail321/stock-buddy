@@ -64,7 +64,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896018341442',
     projectId: 'stockbuddy-33948',
     storageBucket: 'stockbuddy-33948.firebasestorage.app',
-    iosBundleId: 'com.example.stockBuddy',
+    iosBundleId: 'com.client.stockbuddy',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
@@ -73,7 +73,7 @@ class DefaultFirebaseOptions {
     messagingSenderId: '896018341442',
     projectId: 'stockbuddy-33948',
     storageBucket: 'stockbuddy-33948.firebasestorage.app',
-    iosBundleId: 'com.example.stockBuddy',
+    iosBundleId: 'com.client.stockbuddy',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

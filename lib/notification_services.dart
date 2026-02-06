@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'dart:math';
-import 'package:app_settings/app_settings.dart';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -14,7 +14,7 @@ class NotificationServices {
   // Existing notification properties
   final FirebaseMessaging messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
-  FlutterLocalNotificationsPlugin();
+      FlutterLocalNotificationsPlugin();
 
   // BuildContext? get _globalContext {
   //   return navigatorKey.currentState?.overlay?.context;
@@ -35,22 +35,32 @@ class NotificationServices {
         badge: true,
         carPlay: true,
         criticalAlert: true,
-        provisional: true,
-        sound: true
-    );
+        provisional:
+            false, // Changed to false to get full authorization immediately
+        sound: true);
 
     if (settings.authorizationStatus == AuthorizationStatus.authorized) {
       print("User granted permission");
-    } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
+    } else if (settings.authorizationStatus ==
+        AuthorizationStatus.provisional) {
       print("User granted provisional permission");
     } else {
-      AppSettings.openAppSettings();
-      print("User denied permission");
+      // AppSettings.openAppSettings(); // Removed auto-open as it can be annoying on every start
+      print("User denied permission or has not yet granted it");
     }
+
+    // Set foreground notification options for iOS
+    await messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
   }
 
-  Future<void> initLocalNotifications(BuildContext context, RemoteMessage message) async {
-    var androidInitialization = AndroidInitializationSettings("@mipmap/ic_launcher");
+  Future<void> initLocalNotifications(
+      BuildContext context, RemoteMessage message) async {
+    var androidInitialization =
+        AndroidInitializationSettings("@mipmap/ic_launcher");
     var iosInitialilization = DarwinInitializationSettings();
 
     var initializationSettings = InitializationSettings(
@@ -58,12 +68,9 @@ class NotificationServices {
       iOS: iosInitialilization,
     );
 
-    await _flutterLocalNotificationsPlugin.initialize(
-        initializationSettings,
-        onDidReceiveNotificationResponse: (payload) {}
-    );
+    await _flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onDidReceiveNotificationResponse: (payload) {});
   }
-
 
   void firebaseInit(BuildContext context) {
     FirebaseMessaging.onMessage.listen((message) {
@@ -92,19 +99,15 @@ class NotificationServices {
 
   Future<void> showNotification(RemoteMessage message) async {
     AndroidNotificationChannel channel = AndroidNotificationChannel(
-        Random().nextInt(100000).toString(),
-        "High Importance Notifications",
-        importance: Importance.max
-    );
+        Random().nextInt(100000).toString(), "High Importance Notifications",
+        importance: Importance.max);
 
     AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-        channel.id,
-        channel.name,
+        channel.id, channel.name,
         channelDescription: 'Channel description',
         importance: Importance.high,
         priority: Priority.high,
-        ticker: 'ticker'
-    );
+        ticker: 'ticker');
 
     DarwinNotificationDetails iosDetails = DarwinNotificationDetails(
       presentAlert: true,
@@ -123,12 +126,10 @@ class NotificationServices {
   Future<String?> getDeviceToken() async => await messaging.getToken();
 
   void isTokenRefresh() => messaging.onTokenRefresh.listen((token) {
-    print("Token refreshed: $token");
-  });
+        print("Token refreshed: $token");
+      });
 
   /* ------------------------- */
   /* VIDEO CALL METHODS */
   /* ------------------------- */
-
-
 }

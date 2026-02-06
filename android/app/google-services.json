@@ -9,7 +9,7 @@
       "client_info": {
         "mobilesdk_app_id": "1:896018341442:android:171be8cca41d8cb1edd7db",
         "android_client_info": {
-          "package_name": "com.example.stock_buddy"
+          "package_name": "com.client.stockbuddy"
         }
       },
       "oauth_client": [],
