@@ -75,6 +75,7 @@ class _SplashScreenState extends State<SplashScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          const SizedBox(height: 150),
           _buildAppLogo(size: 80),
           const SizedBox(height: 24),
           _buildAppName(fontSize: 32),
