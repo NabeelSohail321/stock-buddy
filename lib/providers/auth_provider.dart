@@ -87,7 +87,7 @@ class AuthProvider with ChangeNotifier {
       // If token verification fails, clear auth data
       await logout();
       _isLoading = false;
-      _errorMessage = e.toString().replaceAll('Exception: ', '');
+      // _errorMessage = e.toString().replaceAll('Exception: ', '');
       notifyListeners();
       return false;
     }

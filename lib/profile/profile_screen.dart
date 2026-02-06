@@ -4,6 +4,7 @@ import 'package:stock_buddy/screens/auth/login_screen.dart';
 
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
+import '../providers/user_provider.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -50,26 +51,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_formKey.currentState!.validate()) {
       final authProvider = context.read<AuthProvider>();
       final currentUser = authProvider.currentUser;
+      final userProvider = context.read<UserProvider>();
 
       if (currentUser != null) {
-        // Create updated user object
-        final updatedUser = currentUser.copyWith(
+        // Use UserProvider to update the user on the backend
+        final success = await userProvider.updateUser(
+          userId: currentUser.id,
           name: _nameController.text.trim(),
-          email: _emailController.text.trim(),
+          role: currentUser.role, // Keep existing role
+          isActive: true, // Keep active
         );
 
-        // TODO: Implement API call to update user profile
-        // For now, we'll just show a success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-
-        setState(() {
-          _isEditing = false;
-        });
+        if (success && mounted) {
+          // You might need to refresh the current user in AuthProvider as well
+          // depending on how your auth state is managed.
+          // For now, showing success based on provider result.
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile updated successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          setState(() {
+            _isEditing = false;
+          });
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update profile: ${userProvider.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
@@ -124,7 +137,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) {
-            return LoginScreen();
+            return const LoginScreen();
           },),
               (route) => false,
         );
@@ -135,6 +148,105 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Logout failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // --- DELETE ACCOUNT LOGIC ---
+
+  Future<void> _showDeleteConfirmationDialog() async {
+    return showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Delete Account'),
+          content: const Text(
+            'Are you sure you want to delete your account? This action will delete your profile permanently and you will be logged out immediately.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _deleteAccount();
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Delete', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteAccount() async {
+    final authProvider = context.read<AuthProvider>();
+    final userProvider = context.read<UserProvider>();
+    final currentUser = authProvider.currentUser;
+
+    if (currentUser == null) return;
+
+    // Show loading
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      // 1. Deactivate User via API
+      final success = await userProvider.updateUser(
+        userId: currentUser.id,
+        name: currentUser.name,
+        role: currentUser.role,
+        isActive: false, // Set active to false
+      );
+
+      // Close loading dialog
+      if (mounted) Navigator.of(context).pop();
+
+      if (success) {
+        // 2. Clear Local Storage (Logout)
+        await authProvider.logout();
+
+        if (mounted) {
+          // 3. Show Success Message
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account deleted successfully.'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+
+          // 4. Redirect to Login
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+                (route) => false,
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to delete account: ${userProvider.error}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Ensure dialog is closed
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An error occurred: $e'),
             backgroundColor: Colors.red,
           ),
         );
@@ -224,9 +336,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             // Profile Information Card
             _buildProfileInfoCard(user, isDesktop),
 
-            // Logout Card
+            // Logout & Delete Card
             const SizedBox(height: 24),
             _buildLogoutCard(),
+            const SizedBox(height: 30),
           ],
         ),
       ),
@@ -511,12 +624,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: ElevatedButton.icon(
                 onPressed: _showLogoutDialog,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red.shade50,
-                  foregroundColor: Colors.red,
+                  backgroundColor: Colors.blue.shade50,
+                  foregroundColor: Colors.blue.shade800,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.red.shade200),
+                    side: BorderSide(color: Colors.blue.shade200),
                   ),
                 ),
                 icon: const Icon(Icons.logout, size: 20),
@@ -530,13 +643,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
 
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
 
-            Text(
-              'Sign out of your account',
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 12,
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _showDeleteConfirmationDialog,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red.shade50,
+                  foregroundColor: Colors.red,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: Colors.red.shade200),
+                  ),
+                ),
+                icon: const Icon(Icons.delete_forever, size: 20),
+                label: const Text(
+                  'Delete Account',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
               ),
             ),
           ],

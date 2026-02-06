@@ -103,7 +103,7 @@ class ApiService {
         return AuthResponse.fromJson(responseData);
       } else {
         final errorData = jsonDecode(response.body) as Map<String, dynamic>;
-        final errorMessage = errorData['message'] ?? 'Login failed';
+        final errorMessage = errorData['error'] ?? errorData['message'] ?? 'Login failed';
         throw Exception(errorMessage);
       }
     } catch (e) {
