@@ -1,4 +1,4 @@
-package com.example.stock_buddy
+package com.client.stockbuddy
 
 import io.flutter.embedding.android.FlutterActivity
 

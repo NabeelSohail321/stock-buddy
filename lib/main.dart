@@ -1,3 +1,4 @@
+import 'dart:developer' as developer;
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -206,10 +207,12 @@ class _AuthWrapperState extends State<AuthWrapper> {
   }
 
   Future<void> _fetchDeviceToken() async {
+    developer.log("_fetchDeviceToken() Run");
     final deviceToken = await notificationServices.getDeviceToken();
     setState(() {
       token = deviceToken;
     });
+    developer.log("FCM Token: $token");
     print("FCM Token: $token");
   }
 
