@@ -513,21 +513,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 16),
 
                   // Email Field
-                  _buildInfoField(
-                    label: 'Email Address',
-                    value: user.email,
-                    icon: Icons.email_outlined,
-                    isEditing: _isEditing,
-                    controller: _emailController,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter your email';
-                      }
-                      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                        return 'Please enter a valid email';
-                      }
-                      return null;
-                    },
+                  _buildReadOnlyField(
+                    label: "Email",
+                    value: _emailController.text,
+                    icon: Icons.email
                   ),
                   const SizedBox(height: 16),
 
@@ -558,6 +547,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 16,
+                            color: Colors.white
                           ),
                         ),
                       ),
