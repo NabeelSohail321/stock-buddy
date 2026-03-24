@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:math';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -123,7 +124,30 @@ class NotificationServices {
     );
   }
 
-  Future<String?> getDeviceToken() async => await messaging.getToken();
+  Future<String?> getDeviceToken() async {
+    // Check if Firebase is initialized
+    if (Firebase.apps.isEmpty) {
+      print("Firebase is NOT initialized.");
+      return null;
+    }
+
+    // Get the default Firebase app
+    FirebaseApp app = Firebase.app();
+
+    // Print app details
+    print("Firebase App Name: ${app.name}");
+    print("Firebase Project ID: ${app.options.projectId}");
+    print("Firebase API Key: ${app.options.apiKey}");
+    print("Firebase Messaging Sender ID: ${app.options.messagingSenderId}");
+
+    // Get FCM token
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    String? token = await messaging.getToken();
+
+    print("Hello FCM Device Token: $token");
+
+    return token;
+  }
 
   void isTokenRefresh() => messaging.onTokenRefresh.listen((token) {
         print("Token refreshed: $token");
