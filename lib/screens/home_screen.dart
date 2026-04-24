@@ -60,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadRecentTransactions() async {
-    if (!_isAdmin) return;
+    if (!_isAdmin && !_isAudit) return;
 
     setState(() {
       _isRefreshingTransactions = true;
@@ -96,11 +96,15 @@ class _HomeScreenState extends State<HomeScreen> {
     return _currentUser?.role == 'admin';
   }
 
+  bool get _isAudit {
+    return _currentUser?.role == 'audits';
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     // Refresh transactions when returning to this screen
-    if (_isAdmin && !_isRefreshingTransactions) {
+    if ((_isAdmin || _isAudit) && !_isRefreshingTransactions) {
       _loadRecentTransactions();
     }
   }
@@ -133,15 +137,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
                 // Admin Badge
                 if (_isAdmin) _buildAdminBadge(isDesktop, isTablet, isMobile),
-                if (_isAdmin) const SizedBox(height: 16),
+                if (_isAudit) _buildAuditBadge(isDesktop, isTablet, isMobile),
+                if (_isAdmin || _isAudit) const SizedBox(height: 16),
 
                 // Quick Actions Section
                 _buildQuickActionsSection(isDesktop, isTablet, isMobile),
                 const SizedBox(height: 32),
 
-                // Recent Transactions Section - Only for Admin
-                if (_isAdmin) _buildTransactionsSection(isDesktop, isTablet, isMobile),
-                if (_isAdmin) const SizedBox(height: 32),
+                // Recent Transactions Section - Only for Admin and Audits
+                if (_isAdmin || _isAudit) _buildTransactionsSection(isDesktop, isTablet, isMobile),
+                if (_isAdmin || _isAudit) const SizedBox(height: 32),
               ],
             ),
           ),
@@ -242,6 +247,39 @@ class _HomeScreenState extends State<HomeScreen> {
             'Administrator Access',
             style: TextStyle(
               color: Colors.purple.shade700,
+              fontWeight: FontWeight.w600,
+              fontSize: isDesktop ? 15 : isTablet ? 14 : 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAuditBadge(bool isDesktop, bool isTablet, bool isMobile) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: isDesktop ? 20 : isTablet ? 18 : 16,
+        vertical: isDesktop ? 10 : isTablet ? 9 : 8,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.visibility_rounded,
+            color: Colors.orange.shade700,
+            size: isDesktop ? 18 : isTablet ? 17 : 16,
+          ),
+          SizedBox(width: isDesktop ? 10 : isTablet ? 9 : 8),
+          Text(
+            'Auditor Access',
+            style: TextStyle(
+              color: Colors.orange.shade700,
               fontWeight: FontWeight.w600,
               fontSize: isDesktop ? 15 : isTablet ? 14 : 12,
             ),
@@ -466,6 +504,28 @@ class _HomeScreenState extends State<HomeScreen> {
           );
         },
       ));
+    }
+
+    if (_isAudit) {
+      // For audits, show ONLY View Transactions
+      return [
+        QuickActionCard(
+          icon: Icons.receipt_long_rounded,
+          title: 'View Transactions',
+          subtitle: 'Audit all inventory movements',
+          color: Colors.blue.shade800,
+          onTap: _navigateToTransactions,
+        )
+      ].map((action) => _buildEnhancedQuickActionCard(
+        icon: action.icon,
+        title: action.title,
+        subtitle: action.subtitle,
+        color: action.color,
+        onTap: action.onTap,
+        isDesktop: isDesktop,
+        isTablet: isTablet,
+        isMobile: isMobile,
+      )).toList();
     }
 
     return actions.map((action) => _buildEnhancedQuickActionCard(

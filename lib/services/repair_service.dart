@@ -34,7 +34,7 @@ class RepairService {
         'note': note,
         'photo': photo,
       }),
-    );
+    ).timeout(const Duration(seconds: 15));
 
     if (response.statusCode == 201) {
       return json.decode(response.body);
@@ -49,8 +49,9 @@ class RepairService {
       headers: {
         'Authorization': 'Bearer $token',
       },
-    );
+    ).timeout(const Duration(seconds: 300));
 
+print('repair tickets: ${response.body}');
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
@@ -62,19 +63,24 @@ class RepairService {
     required String repairTicketId,
     required String locationId,
     String? note,
+    List<Map<String, dynamic>>? checklist,
   }) async {
+    final body = json.encode({
+      'repairTicketId': repairTicketId,
+      'locationId': locationId,
+      'note': note,
+      'checklist': checklist,
+    });
+    print('Return From Repair Request Body: $body');
+
     final response = await http.post(
       Uri.parse('${ApiConstants.baseUrl}/repairs/return'),
       headers: {
         'Authorization': 'Bearer $token',
         'Content-Type': 'application/json',
       },
-      body: json.encode({
-        'repairTicketId': repairTicketId,
-        'locationId': locationId,
-        'note': note,
-      }),
-    );
+      body: body,
+    ).timeout(const Duration(seconds: 15));
 
     if (response.statusCode == 200) {
       return json.decode(response.body);

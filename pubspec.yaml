@@ -54,6 +54,7 @@ dependencies:
   path_provider:
   open_file:
   intl:
+  html_to_pdf:
 
 dev_dependencies:
   flutter_test:
@@ -114,6 +115,3 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-
-
-

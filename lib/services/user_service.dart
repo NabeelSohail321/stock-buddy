@@ -74,7 +74,9 @@ class UserService {
     if (response.statusCode == 200) {
       return json.decode(response.body);
     } else {
-      throw Exception('Failed to update user: ${response.statusCode}');
+      final errorData = json.decode(response.body);
+      final message = errorData['message'] ?? errorData['error'] ?? 'Status ${response.statusCode}';
+      throw Exception('Failed to update user: $message');
     }
   }
 

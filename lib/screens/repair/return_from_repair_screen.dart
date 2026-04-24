@@ -16,9 +16,11 @@ class ReturnFromRepairScreen extends StatefulWidget {
 class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
   final _formKey = GlobalKey<FormState>();
   final _returnNoteController = TextEditingController();
+  final _checklistLabelController = TextEditingController();
 
   String? _selectedRepairTicketId;
   String? _selectedReturnLocationId;
+  final List<Map<String, dynamic>> _checklist = [];
 
   @override
   void initState() {
@@ -59,11 +61,17 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
 
     final repairProvider = Provider.of<RepairProvider>(context, listen: false);
 
+    print('Submitting Return Request:');
+    print('Ticket ID: $_selectedRepairTicketId');
+    print('Location ID: $_selectedReturnLocationId');
+    print('Checklist: $_checklist');
+
     // Call the provider method to process return
     final success = await repairProvider.returnFromRepair(
       repairTicketId: _selectedRepairTicketId!,
       locationId: _selectedReturnLocationId!,
       note: _returnNoteController.text.isNotEmpty ? _returnNoteController.text : null,
+      checklist: _checklist.isNotEmpty ? _checklist : null,
     );
 
     if (success && mounted) {
@@ -77,9 +85,35 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
     }
   }
 
+  void _addChecklistItem() {
+    final label = _checklistLabelController.text.trim();
+    if (label.isEmpty) return;
+
+    setState(() {
+      _checklist.add({
+        'label': label,
+        'completed': false,
+      });
+      _checklistLabelController.clear();
+    });
+  }
+
+  void _toggleChecklistItem(int index) {
+    setState(() {
+      _checklist[index]['completed'] = !(_checklist[index]['completed'] as bool);
+    });
+  }
+
+  void _removeChecklistItem(int index) {
+    setState(() {
+      _checklist.removeAt(index);
+    });
+  }
+
   @override
   void dispose() {
     _returnNoteController.dispose();
+    _checklistLabelController.dispose();
     super.dispose();
   }
 
@@ -95,8 +129,46 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
         builder: (context, itemsProvider, child) {
           return Consumer<RepairProvider>(
             builder: (context, repairProvider, child) {
-              if (repairProvider.isLoading && repairProvider.sentRepairTickets.isEmpty) {
-                return const Center(child: CircularProgressIndicator());
+              // Show loading only if we are actually loading AND have no data yet AND no error
+              if (repairProvider.isLoading && repairProvider.sentRepairTickets.isEmpty && repairProvider.error.isEmpty) {
+                return const Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 16),
+                      Text('Fetching repair tickets...'),
+                    ],
+                  ),
+                );
+              }
+
+              // If not loading and no tickets, show empty state message or the form
+              if (!repairProvider.isLoading && repairProvider.sentRepairTickets.isEmpty && repairProvider.error.isEmpty) {
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
+                      const SizedBox(height: 16),
+                      const Text(
+                        'No pending repairs found.',
+                        style: TextStyle(fontSize: 18, color: Colors.grey, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Items must be sent to repair before they can be returned.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 24),
+                      ElevatedButton(
+                        onPressed: () => repairProvider.fetchRepairTickets(),
+                        child: const Text('Retry Fetch'),
+                      ),
+                    ],
+                  ),
+                );
               }
 
               return Padding(
@@ -126,6 +198,10 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
 
                         // 3. Location Selection (Where it's going back to)
                         _buildLocationDropdown(itemsProvider),
+                        const SizedBox(height: 20),
+
+                        // Checklist Section
+                        _buildChecklistSection(),
                         const SizedBox(height: 20),
 
                         // 4. Return Note (Optional)
@@ -429,6 +505,94 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
           },
           validator: (value) => value == null ? 'Required' : null,
         ),
+      ],
+    );
+  }
+
+  Widget _buildChecklistSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Repair Checklist',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _checklistLabelController,
+                decoration: const InputDecoration(
+                  border: OutlineInputBorder(),
+                  hintText: 'e.g., Power test, Screen checked',
+                  isDense: true,
+                ),
+                onFieldSubmitted: (_) => _addChecklistItem(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _addChecklistItem,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              child: const Icon(Icons.add),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_checklist.isNotEmpty)
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(8),
+              color: Colors.grey.shade50,
+            ),
+            child: ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: _checklist.length,
+              separatorBuilder: (context, index) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final item = _checklist[index];
+                return ListTile(
+                  leading: Checkbox(
+                    value: item['completed'] as bool,
+                    onChanged: (value) => _toggleChecklistItem(index),
+                    activeColor: Colors.green,
+                  ),
+                  title: Text(
+                    item['label'].toString(),
+                    style: TextStyle(
+                      decoration: (item['completed'] as bool)
+                          ? TextDecoration.lineThrough
+                          : null,
+                      color: (item['completed'] as bool)
+                          ? Colors.grey
+                          : Colors.black87,
+                    ),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    onPressed: () => _removeChecklistItem(index),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                  dense: true,
+                );
+              },
+            ),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Text(
+              'No items added to checklist yet.',
+              style: TextStyle(color: Colors.grey[600], fontSize: 13, fontStyle: FontStyle.italic),
+            ),
+          ),
       ],
     );
   }

@@ -76,6 +76,7 @@ class RepairProvider with ChangeNotifier {
     required String repairTicketId,
     required String locationId,
     String? note,
+    List<Map<String, dynamic>>? checklist,
   }) async {
     _isLoading = true;
     _error = '';
@@ -87,6 +88,7 @@ class RepairProvider with ChangeNotifier {
         repairTicketId: repairTicketId,
         locationId: locationId,
         note: note,
+        checklist: checklist,
       );
 
       _successMessage = 'Item returned from repair successfully';

@@ -274,6 +274,9 @@ class UserCard extends StatelessWidget {
       case 'staff':
         color = Colors.blue;
         break;
+      case 'audits':
+        color = Colors.orange;
+        break;
       default:
         color = Colors.grey;
     }
@@ -451,6 +454,10 @@ class _CreateUserDialogState extends State<CreateUserDialog> {
                     value: 'admin',
                     child: Text('Admin'),
                   ),
+                  DropdownMenuItem(
+                    value: 'audits',
+                    child: Text('Audits'),
+                  ),
                 ],
                 onChanged: (value) {
                   setState(() {
@@ -512,7 +519,7 @@ class _EditUserDialogState extends State<EditUserDialog> {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
     final success = await userProvider.updateUser(
-      userId: widget.user['_id'],
+      userId: widget.user['_id'] ?? widget.user['id'],
       name: _nameController.text.trim(),
       role: _selectedRole,
       isActive: _isActive,
@@ -575,6 +582,10 @@ class _EditUserDialogState extends State<EditUserDialog> {
                   DropdownMenuItem(
                     value: 'admin',
                     child: Text('Admin'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'audits',
+                    child: Text('Audits'),
                   ),
                 ],
                 onChanged: (value) {
@@ -643,7 +654,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
 
     final success = await userProvider.resetUserPassword(
-      userId: widget.user['_id'],
+      userId: widget.user['_id'] ?? widget.user['id'],
       newPassword: _passwordController.text,
     );
 

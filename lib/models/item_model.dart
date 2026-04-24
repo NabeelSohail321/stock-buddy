@@ -33,6 +33,9 @@ class Item {
   final String? stockStatus;
   final String? status;
   final String? image; // New field for image URL or base64
+  final String? modelNumber;
+  final String? serialNumber;
+  final DateTime? purchaseDate;
   final List<ItemLocation> locations;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -48,6 +51,9 @@ class Item {
     this.stockStatus,
     this.status,
     this.image, // New optional parameter
+    this.modelNumber,
+    this.serialNumber,
+    this.purchaseDate,
     required this.locations,
     this.createdAt,
     this.updatedAt,
@@ -65,6 +71,9 @@ class Item {
       stockStatus: json['stockStatus']?.toString(),
       status: json['status']?.toString(),
       image: json['image']?.toString(), // Parse the new image field
+      modelNumber: json['model_number']?.toString(),
+      serialNumber: json['serial_number']?.toString(),
+      purchaseDate: json['purchase_date'] != null ? DateTime.tryParse(json['purchase_date'].toString()) : null,
       locations: json['locations'] is List
           ? (json['locations'] as List).map((loc) => ItemLocation.fromJson(loc)).toList()
           : [],

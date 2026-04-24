@@ -26,6 +26,9 @@ class ItemsService {
     required String unit,
     required int threshold,
     String? image, // Add optional image parameter
+    String? modelNumber,
+    String? serialNumber,
+    String? purchaseDate,
   }) async {
     final token = await getToken();
     if (token == null) {
@@ -44,6 +47,18 @@ class ItemsService {
       // Add image to request if provided
       if (image != null && image.isNotEmpty) {
         requestBody['image'] = image;
+      }
+
+      if (modelNumber != null && modelNumber.isNotEmpty) {
+        requestBody['model_number'] = modelNumber;
+      }
+
+      if (serialNumber != null && serialNumber.isNotEmpty) {
+        requestBody['serial_number'] = serialNumber;
+      }
+
+      if (purchaseDate != null && purchaseDate.isNotEmpty) {
+        requestBody['purchase_date'] = purchaseDate;
       }
 
       final response = await client.post(

@@ -20,6 +20,11 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   final _skuController = TextEditingController();
   final _barcodeController = TextEditingController();
   final _thresholdController = TextEditingController(text: '0');
+  final _modelNumberController = TextEditingController();
+  final _serialNumberController = TextEditingController();
+  final _purchaseDateController = TextEditingController(
+    text: DateTime.now().toString().split(' ')[0],
+  );
 
   String _selectedUnit = 'pcs';
   final List<String> _selectedLocations = [];
@@ -63,6 +68,9 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     _skuController.dispose();
     _barcodeController.dispose();
     _thresholdController.dispose();
+    _modelNumberController.dispose();
+    _serialNumberController.dispose();
+    _purchaseDateController.dispose();
     super.dispose();
   }
 
@@ -94,6 +102,9 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
         threshold: int.tryParse(_thresholdController.text) ?? 0,
         locations: _selectedLocations,
         image: _base64Image,
+        modelNumber: _modelNumberController.text.trim(),
+        serialNumber: _serialNumberController.text.trim(),
+        purchaseDate: _purchaseDateController.text.trim(),
       );
 
       if (success && mounted) {
@@ -116,6 +127,9 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
           _thresholdController.text = '0';
           _autoGenerateBarcode = false;
           _barcodeController.clear();
+          _modelNumberController.clear();
+          _serialNumberController.clear();
+          _purchaseDateController.text = DateTime.now().toString().split(' ')[0];
           _selectedImage = null;
           _base64Image = null;
         });
@@ -148,6 +162,32 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Future<void> _selectPurchaseDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2101),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: Colors.blue.shade800,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() {
+        _purchaseDateController.text = picked.toString().split(' ')[0];
+      });
+    }
   }
 
   void _clearBarcode() {
@@ -560,19 +600,102 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                       TextFormField(
                         controller: _skuController,
                         decoration: InputDecoration(
-                          labelText: 'SKU *',
+                          labelText: 'SKU (Optional)',
                           prefixIcon: const Icon(Icons.tag_outlined),
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                           hintText: 'e.g., LP-DELL-XPS13-001',
                         ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Please enter SKU';
-                          }
-                          return null;
-                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Model Number and Serial Number Row (Desktop) or Column (Mobile)
+                      if (isDesktop)
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextFormField(
+                                controller: _modelNumberController,
+                                decoration: InputDecoration(
+                                  labelText: 'Model Number (Optional)',
+                                  prefixIcon: const Icon(Icons.computer_outlined),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  hintText: 'e.g., XPS 13 9310',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: TextFormField(
+                                controller: _serialNumberController,
+                                decoration: InputDecoration(
+                                  labelText: 'Serial Number (Optional)',
+                                  prefixIcon: const Icon(Icons.numbers_outlined),
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  hintText: 'e.g., SN-123-456',
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        Column(
+                          children: [
+                            TextFormField(
+                              controller: _modelNumberController,
+                              decoration: InputDecoration(
+                                labelText: 'Model Number (Optional)',
+                                prefixIcon: const Icon(Icons.computer_outlined),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                hintText: 'e.g., XPS 13 9310',
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _serialNumberController,
+                              decoration: InputDecoration(
+                                labelText: 'Serial Number (Optional)',
+                                prefixIcon: const Icon(Icons.numbers_outlined),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                hintText: 'e.g., SN-123-456',
+                              ),
+                            ),
+                          ],
+                        ),
+                      const SizedBox(height: 16),
+
+                      // Purchase Date Field
+                      TextFormField(
+                        controller: _purchaseDateController,
+                        readOnly: true,
+                        onTap: _selectPurchaseDate,
+                        decoration: InputDecoration(
+                          labelText: 'Purchase Date (Optional)',
+                          prefixIcon: const Icon(Icons.calendar_today_outlined),
+                          suffixIcon: _purchaseDateController.text.isNotEmpty
+                              ? IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    setState(() {
+                                      _purchaseDateController.clear();
+                                    });
+                                  },
+                                )
+                              : const Icon(Icons.arrow_drop_down),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          hintText: 'Select purchase date',
+                        ),
                       ),
                       const SizedBox(height: 16),
 

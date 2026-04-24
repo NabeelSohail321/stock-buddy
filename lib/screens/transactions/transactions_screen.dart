@@ -21,8 +21,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   final ScrollController _scrollController = ScrollController();
 
   // Filter States
-  DateTimeRange? _selectedDateRange;
+  String? _selectedCategory;
   String? _selectedTransactionType;
+  String? _selectedStatus;
+  String? _selectedDatePreset;
+  DateTimeRange? _selectedDateRange;
+  final TextEditingController _searchController = TextEditingController();
 
   // Transaction Types available
   final List<String> _transactionTypes = [
@@ -31,6 +35,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     'REPAIR_OUT',
     'REPAIR_IN',
     'DISPOSE'
+  ];
+
+  final List<Map<String, dynamic>> _categoryOptions = [
+    {'id': 'all', 'label': 'All Transactions', 'icon': Icons.list_alt, 'color': Colors.blue},
+    {'id': 'add', 'label': 'Stock Added', 'icon': Icons.add_circle_outline, 'color': Colors.green},
+    {'id': 'transfers', 'label': 'Transfers', 'icon': Icons.compare_arrows, 'color': Colors.orange},
+    {'id': 'sent_repair', 'label': 'Sent to Repair', 'icon': Icons.build_circle_outlined, 'color': Colors.purple},
+    {'id': 'returned_repair', 'label': 'Returned from Repair', 'icon': Icons.assignment_return_outlined, 'color': Colors.teal},
+    {'id': 'disposed', 'label': 'Disposed', 'icon': Icons.delete_outline, 'color': Colors.red},
   ];
 
   @override
@@ -43,6 +56,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -52,7 +66,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final locationProvider = context.read<LocationProvider>();
 
     await Future.wait([
-      transactionProvider.loadAllTransactions(),
+      transactionProvider.loadAllTransactions(
+        category: _selectedCategory,
+        type: _selectedTransactionType,
+        status: _selectedStatus,
+        datePreset: _selectedDatePreset,
+        search: _searchController.text.isNotEmpty ? _searchController.text : null,
+        startDate: _selectedDateRange?.start.toIso8601String(),
+        endDate: _selectedDateRange?.end.toIso8601String(),
+      ),
       userProvider.fetchUsers(),
       locationProvider.loadLocations(),
     ]);
@@ -68,31 +90,19 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
-  // Client-side filtering logic
-  List<Transaction> _filterTransactions(List<Transaction> transactions) {
-    return transactions.where((tx) {
-      bool matchesType = true;
-      bool matchesDate = true;
-
-      // Filter by Type
-      if (_selectedTransactionType != null) {
-        matchesType = tx.type == _selectedTransactionType;
-      }
-
-      // Filter by Date Range
-      if (_selectedDateRange != null) {
-        // FIXED: Duration logic
-        final start = DateUtils.dateOnly(_selectedDateRange!.start);
-        // Add 1 day then subtract 1 second to get 23:59:59 of the end date
-        final end = DateUtils.dateOnly(_selectedDateRange!.end)
-            .add(const Duration(days: 1))
-            .subtract(const Duration(seconds: 1));
-
-        matchesDate = tx.createdAt.isAfter(start) && tx.createdAt.isBefore(end);
-      }
-
-      return matchesType && matchesDate;
-    }).toList();
+  void _applyFilters() {
+    final transProv = context.read<TransactionProvider>();
+    transProv.loadAllTransactions(
+      category: _selectedCategory,
+      type: _selectedTransactionType,
+      status: _selectedStatus,
+      datePreset: _selectedDatePreset,
+      search: _searchController.text.isNotEmpty ? _searchController.text : null,
+      startDate: _selectedDateRange?.start.toIso8601String(),
+      endDate: _selectedDateRange?.end != null 
+          ? _selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59, seconds: 59)).toIso8601String()
+          : null,
+    );
   }
 
   Future<void> _selectDateRange() async {
@@ -116,153 +126,226 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       setState(() {
         _selectedDateRange = picked;
       });
+      _applyFilters();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: const Text('All Transactions'),
+        title: Text(_selectedCategory == null 
+            ? 'Transactions' 
+            : _categoryOptions.firstWhere((c) => c['id'] == _selectedCategory)['label']),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
+        leading: _selectedCategory != null 
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                onPressed: () => setState(() => _selectedCategory = null),
+              )
+            : null,
         actions: [
+          if (_selectedCategory != null)
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf),
+              onPressed: () => context.read<TransactionProvider>().exportTransactionsToPdf(),
+              tooltip: 'Download PDF',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              _loadAllData();
-            },
+            onPressed: _loadAllData,
           ),
         ],
       ),
-      body: Consumer3<TransactionProvider, UserProvider, LocationProvider>(
-        builder: (context, transProv, userProv, locProv, child) {
-          // Apply filters to the raw list from provider
-          final filteredTransactions = _filterTransactions(transProv.allTransactions);
+      body: _selectedCategory == null 
+          ? _buildCategoryGrid() 
+          : _buildTransactionList(),
+    );
+  }
 
-          return Column(
-            children: [
-              // --- Filter Section ---
-              Container(
-                padding: const EdgeInsets.all(12),
-                color: Colors.white,
-                child: Column(
-                  children: [
-                    SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          // Date Filter Chip (FIXED: Switched to InputChip)
-                          InputChip(
-                            avatar: const Icon(Icons.calendar_today, size: 16),
-                            label: Text(_selectedDateRange == null
-                                ? 'Date Range'
-                                : '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'
-                            ),
-                            onPressed: _selectDateRange,
-                            // Only show delete icon if a date is selected
-                            onDeleted: _selectedDateRange != null ? () {
-                              setState(() => _selectedDateRange = null);
-                            } : null,
-                            backgroundColor: _selectedDateRange != null ? Colors.blue.shade100 : null,
-                          ),
-                          const SizedBox(width: 8),
-                          // Type Dropdown
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            decoration: BoxDecoration(
-                              color: _selectedTransactionType != null ? Colors.blue.shade100 : Colors.grey.shade200,
-                              borderRadius: BorderRadius.circular(20),
-                            ),
-                            child: DropdownButtonHideUnderline(
-                              child: DropdownButton<String>(
-                                value: _selectedTransactionType,
-                                hint: Row(
-                                  children: [
-                                    Icon(Icons.filter_list, size: 16, color: Colors.grey[800]),
-                                    const SizedBox(width: 8),
-                                    const Text('Type', style: TextStyle(color: Colors.black)),
-                                  ],
-                                ),
-                                icon: const Icon(Icons.arrow_drop_down),
-                                onChanged: (String? newValue) {
-                                  setState(() {
-                                    _selectedTransactionType = newValue;
-                                  });
-                                },
-                                items: [
-                                  const DropdownMenuItem<String>(
-                                    value: null,
-                                    child: Text('All Types'),
-                                  ),
-                                  ..._transactionTypes.map<DropdownMenuItem<String>>((String value) {
-                                    return DropdownMenuItem<String>(
-                                      value: value,
-                                      child: Text(value),
-                                    );
-                                  }).toList(),
-                                ],
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          // Clear All Button
-                          if (_selectedDateRange != null || _selectedTransactionType != null)
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedDateRange = null;
-                                  _selectedTransactionType = null;
-                                });
-                              },
-                              child: const Text('Clear All'),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ],
+  Widget _buildCategoryGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.all(16),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.1,
+      ),
+      itemCount: _categoryOptions.length,
+      itemBuilder: (context, index) {
+        final category = _categoryOptions[index];
+        return Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: InkWell(
+            onTap: () {
+              setState(() => _selectedCategory = category['id']);
+              _applyFilters();
+            },
+            borderRadius: BorderRadius.circular(16),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(category['icon'], size: 48, color: category['color']),
+                const SizedBox(height: 12),
+                Text(
+                  category['label'],
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTransactionList() {
+    return Consumer3<TransactionProvider, UserProvider, LocationProvider>(
+      builder: (context, transProv, userProv, locProv, child) {
+        return Column(
+          children: [
+            // --- Advanced Filter Bar ---
+            _buildAdvancedFilterBar(),
+            const Divider(height: 1),
+
+            // --- List Section ---
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _loadAllData,
+                child: ListView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.all(12),
+                  itemCount: transProv.allTransactions.length + 1,
+                  itemBuilder: (context, index) {
+                    if (index == transProv.allTransactions.length) {
+                      return _buildLoadMoreIndicator(transProv);
+                    }
+
+                    final transaction = transProv.allTransactions[index];
+                    return _buildTransactionCard(transaction, userProv, locProv);
+                  },
                 ),
               ),
-              const Divider(height: 1),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-              // --- List Section ---
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _loadAllData,
-                  child: ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: filteredTransactions.length + 1,
-                    itemBuilder: (context, index) {
-
-                      if (index == filteredTransactions.length) {
-                        return Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Center(
-                            child: transProv.isLoading
-                                ? const CircularProgressIndicator()
-                                : transProv.hasMore
-                                ? OutlinedButton(
-                              onPressed: () => transProv.loadMoreTransactions(),
-                              child: const Text("Load More Data"),
-                            )
-                                : const Text(
-                                'No more transactions',
-                                style: TextStyle(color: Colors.grey)
-                            ),
-                          ),
-                        );
-                      }
-
-                      final transaction = filteredTransactions[index];
-                      return _buildTransactionCard(transaction, userProv, locProv);
-                    },
+  Widget _buildAdvancedFilterBar() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      color: Colors.white,
+      child: Column(
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Search items or notes...',
+              prefixIcon: const Icon(Icons.search),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              suffixIcon: _searchController.text.isNotEmpty 
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _searchController.clear();
+                        _applyFilters();
+                      },
+                    )
+                  : null,
+            ),
+            onSubmitted: (_) => _applyFilters(),
+          ),
+          const SizedBox(height: 12),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                _buildFilterDropdown(
+                  value: _selectedDatePreset,
+                  hint: 'Date Preset',
+                  items: ['day', 'week', 'month', 'year'],
+                  onChanged: (val) {
+                    setState(() => _selectedDatePreset = val);
+                    _applyFilters();
+                  },
+                ),
+                const SizedBox(width: 8),
+                _buildFilterDropdown(
+                  value: _selectedStatus,
+                  hint: 'Status',
+                  items: ['pending', 'approved', 'rejected'],
+                  onChanged: (val) {
+                    setState(() => _selectedStatus = val);
+                    _applyFilters();
+                  },
+                ),
+                const SizedBox(width: 8),
+                if (_selectedDatePreset == null)
+                  InputChip(
+                    avatar: const Icon(Icons.calendar_today, size: 16),
+                    label: Text(_selectedDateRange == null
+                        ? 'Custom Date'
+                        : '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'),
+                    onPressed: _selectDateRange,
+                    onDeleted: _selectedDateRange != null ? () {
+                      setState(() => _selectedDateRange = null);
+                      _applyFilters();
+                    } : null,
                   ),
-                ),
-              ),
-            ],
-          );
-        },
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterDropdown({
+    required String? value,
+    required String hint,
+    required List<String> items,
+    required Function(String?) onChanged,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: value != null ? Colors.blue.shade100 : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          hint: Text(hint),
+          items: [
+            DropdownMenuItem(value: null, child: Text('All $hint')),
+            ...items.map((e) => DropdownMenuItem(value: e, child: Text(e.toUpperCase()))),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadMoreIndicator(TransactionProvider transProv) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Center(
+        child: transProv.isLoading
+            ? const CircularProgressIndicator()
+            : transProv.hasMore
+                ? OutlinedButton(
+                    onPressed: () => transProv.loadMoreTransactions(),
+                    child: const Text("Load More Data"),
+                  )
+                : const Text('No more transactions', style: TextStyle(color: Colors.grey)),
       ),
     );
   }
@@ -362,6 +445,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ] else if (transaction.fromLocationId != null) ...[
               _buildDetailRow(Icons.location_on_outlined, 'Location:', fromLocName),
             ],
+            if (transaction.vendorName != null && transaction.vendorName!.isNotEmpty)
+              _buildDetailRow(Icons.business_outlined, 'Vendor:', transaction.vendorName!),
+            if (transaction.serialNumber != null && transaction.serialNumber!.isNotEmpty)
+              _buildDetailRow(Icons.pin_outlined, 'Serial No:', transaction.serialNumber!),
             if (transaction.reason != null && transaction.reason!.isNotEmpty)
               _buildDetailRow(Icons.question_mark_rounded, 'Reason:', transaction.reason!),
             if (transaction.note != null && transaction.note!.isNotEmpty)
@@ -385,9 +472,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     const SizedBox(height: 4),
                     _buildDetailRow(Icons.calendar_month_outlined, 'Approved At:', _formatDate(transaction.approvedAt!)),
                   ],
+                  if (transaction.updatedAt != null && transaction.updatedAt!.difference(transaction.createdAt).inSeconds.abs() > 60) ...[
+                    const SizedBox(height: 4),
+                    _buildDetailRow(Icons.update_outlined, 'Last Updated:', _formatDate(transaction.updatedAt!)),
+                  ],
                 ],
               ),
             ),
+            if (transaction.repairReturnChecklist.isNotEmpty) ...[
+              const Divider(height: 24),
+              _buildChecklistSection(context, transaction),
+            ],
             if (transaction.photo != null && transaction.photo!.isNotEmpty) ...[
               const SizedBox(height: 12),
               const Text(
@@ -415,6 +510,119 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildChecklistSection(BuildContext context, Transaction transaction) {
+    return InkWell(
+      onTap: () => _showChecklistPopup(context, transaction),
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.blue.shade50,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.blue.shade100),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.checklist_rtl, color: Colors.blue.shade800, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Tap to show repair check list',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.blue.shade800,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.all(4),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade800,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                '${transaction.repairReturnChecklist.length}',
+                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showChecklistPopup(BuildContext context, Transaction transaction) {
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) {
+          return AlertDialog(
+            title: Row(
+              children: [
+                const Icon(Icons.checklist_rtl, color: Colors.blue),
+                const SizedBox(width: 10),
+                const Expanded(child: Text('Repair Check List')),
+                // Note: Checklist editing is now disabled per user request
+              ],
+            ),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: transaction.repairReturnChecklist.length,
+                itemBuilder: (context, index) {
+                  final item = transaction.repairReturnChecklist[index];
+                  return CheckboxListTile(
+                    title: Text(
+                      item.label,
+                      style: TextStyle(
+                        decoration: item.completed ? TextDecoration.lineThrough : null,
+                        color: item.completed ? Colors.grey : Colors.black87,
+                      ),
+                    ),
+                    value: item.completed,
+                    onChanged: null, // Editing disabled
+                    controlAffinity: ListTileControlAffinity.leading,
+                  );
+                },
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<bool> _saveChecklistChanges(BuildContext context, Transaction transaction) async {
+    final transProv = context.read<TransactionProvider>();
+    
+    // Prepare items for PATCH
+    final items = transaction.repairReturnChecklist.map((e) => {
+      'id': e.id,
+      'completed': e.completed,
+    }).toList();
+
+    final success = await transProv.updateRepairChecklist(transaction.id, items);
+
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Checklist updated successfully' : 'Failed to update checklist'),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    }
+    return success;
   }
 
   Widget _buildDetailRow(IconData icon, String label, String value) {

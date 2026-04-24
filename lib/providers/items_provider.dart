@@ -32,6 +32,9 @@ class ItemsProvider with ChangeNotifier {
     required int threshold,
     required List<String> locations,
     String? image, // Add optional image parameter
+    String? modelNumber,
+    String? serialNumber,
+    String? purchaseDate,
   }) async {
     _isLoading = true;
     _errorMessage = '';
@@ -45,6 +48,9 @@ class ItemsProvider with ChangeNotifier {
         unit: unit,
         threshold: threshold,
         image: image, // Pass image to service
+        modelNumber: modelNumber,
+        serialNumber: serialNumber,
+        purchaseDate: purchaseDate,
       );
 
       _items.add(newItem);

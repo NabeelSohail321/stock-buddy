@@ -1,3 +1,31 @@
+class ChecklistItem {
+  final String? id;
+  final String label;
+  final bool completed;
+
+  ChecklistItem({
+    this.id,
+    required this.label,
+    required this.completed,
+  });
+
+  factory ChecklistItem.fromJson(Map<String, dynamic> json) {
+    return ChecklistItem(
+      id: json['_id'] ?? json['id'],
+      label: json['label'] ?? '',
+      completed: json['completed'] ?? false,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      if (id != null) 'id': id,
+      'label': label,
+      'completed': completed,
+    };
+  }
+}
+
 class Transaction {
   final String id;
   final String type;
@@ -24,6 +52,10 @@ class Transaction {
   final String? note;
   final String? reason;
   final String? photo;
+  final String? vendorName;
+  final String? serialNumber;
+  final List<ChecklistItem> repairReturnChecklist;
+  final DateTime? updatedAt;
 
   Transaction({
     required this.id,
@@ -43,6 +75,10 @@ class Transaction {
     this.note,
     this.reason,
     this.photo,
+    this.vendorName,
+    this.serialNumber,
+    this.repairReturnChecklist = const [],
+    this.updatedAt,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
@@ -134,6 +170,23 @@ class Transaction {
         } catch (_) {}
       }
 
+      DateTime? updatedAt;
+      if (json['updatedAt'] != null) {
+        try {
+          updatedAt = DateTime.parse(json['updatedAt']);
+        } catch (_) {}
+      }
+
+      // 5. Parse Checklist
+      List<ChecklistItem> repairReturnChecklist = [];
+      // Support both 'repairReturnChecklist' (new) and 'checklist' (old)
+      final checklistData = json['repairReturnChecklist'] ?? json['checklist'];
+      if (checklistData != null && checklistData is List) {
+        repairReturnChecklist = (checklistData as List)
+            .map((item) => ChecklistItem.fromJson(item))
+            .toList();
+      }
+
       return Transaction(
         id: json['_id'] ?? json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
         type: json['type'] ?? 'UNKNOWN',
@@ -155,6 +208,10 @@ class Transaction {
         note: json['note'],
         reason: json['reason'],
         photo: json['photo'],
+        vendorName: json['vendorName'],
+        serialNumber: json['serialNumber'],
+        repairReturnChecklist: repairReturnChecklist,
+        updatedAt: updatedAt,
       );
     } catch (e) {
       print('Error creating Transaction from JSON: $e');
