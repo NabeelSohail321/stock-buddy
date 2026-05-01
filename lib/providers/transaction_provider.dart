@@ -7,6 +7,7 @@ import '../services/transaction_service.dart';
 import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 
 class TransactionProvider with ChangeNotifier {
@@ -164,11 +165,28 @@ class TransactionProvider with ChangeNotifier {
           targetDirectory: directory.path,
           targetName: fileName,
           printSize: PrintSize.A4,
-          printOrientation: PrintOrientation.Landscape, // Landscape for better table fit
+          printOrientation: PrintOrientation.Landscape,
         ),
       );
 
-      await OpenFile.open(generatedPdfFile.path);
+      if (Platform.isIOS) {
+        // On iOS, use the native Share Sheet to preview/share the PDF.
+        // This opens Quick Look PDF viewer via the system share dialog.
+        final xFile = XFile(
+          generatedPdfFile.path,
+          mimeType: 'application/pdf',
+          name: '$fileName.pdf',
+        );
+        await SharePlus.instance.share(
+          ShareParams(
+            files: [xFile],
+            subject: 'Stock Buddy - Transaction Report',
+          ),
+        );
+      } else {
+        // On Android (and other platforms), open the PDF directly.
+        await OpenFile.open(generatedPdfFile.path);
+      }
     } catch (e) {
       _errorMessage = 'Failed to export PDF: $e';
       notifyListeners();

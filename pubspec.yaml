@@ -55,6 +55,7 @@ dependencies:
   open_file:
   intl:
   html_to_pdf:
+  share_plus: ^12.0.2
 
 dev_dependencies:
   flutter_test:
