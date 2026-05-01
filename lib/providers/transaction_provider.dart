@@ -166,7 +166,7 @@ class TransactionProvider with ChangeNotifier {
         ),
       );
 
-      final directory = await getApplicationDocumentsDirectory();
+      final directory = await getTemporaryDirectory();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'transactions_$timestamp.pdf';
       final file = File('${directory.path}/$fileName');
@@ -175,7 +175,12 @@ class TransactionProvider with ChangeNotifier {
 
       if (Platform.isIOS) {
         if (!await file.exists()) throw Exception('PDF file not found');
-        await Share.shareXFiles([XFile(file.path)], subject: 'Transaction Report');
+        
+        // Explicitly set the mimeType for real iOS devices
+        await Share.shareXFiles(
+          [XFile(file.path, mimeType: 'application/pdf')], 
+          subject: 'Stock Buddy - Transaction Report',
+        );
       } else {
         await OpenFile.open(file.path);
       }
