@@ -172,8 +172,13 @@ class TransactionProvider with ChangeNotifier {
       
       await file.writeAsBytes(await pdf.save());
 
-      // Use open_file for all platforms to avoid share_plus native crashes
-      await OpenFile.open(file.path);
+      _setLoading(false);
+      
+      // Use open_file and check for success
+      final result = await OpenFile.open(file.path);
+      if (result.type != ResultType.done) {
+        throw Exception(result.message);
+      }
     } catch (e) {
       _errorMessage = 'Failed to export PDF: $e';
       notifyListeners();
@@ -234,7 +239,7 @@ class TransactionProvider with ChangeNotifier {
           final date = DateFormat('yyyy-MM-dd HH:mm').format(tx.createdAt);
           return pw.TableRow(
             children: [
-              _tableCell(date),
+              _tableCell(_sanitize(date)),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(5),
                 child: pw.Container(
@@ -243,22 +248,22 @@ class TransactionProvider with ChangeNotifier {
                     color: _getPdfTypeColor(tx.type),
                     borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                   ),
-                  child: pw.Text(tx.displayType,
+                  child: pw.Text(_sanitize(tx.displayType),
                       style: const pw.TextStyle(fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
                 ),
               ),
-              _tableCell(tx.itemName),
-              _tableCell('${tx.quantity}'),
+              _tableCell(_sanitize(tx.itemName)),
+              _tableCell(_sanitize('${tx.quantity}')),
               _tableCell(tx.type == 'TRANSFER'
-                  ? 'From: ${tx.fromLocation ?? "-"}\nTo: ${tx.toLocation ?? "-"}'
-                  : 'Loc: ${tx.fromLocation ?? "-"}'),
+                  ? 'From: ${_sanitize(tx.fromLocation ?? "-")}\nTo: ${_sanitize(tx.toLocation ?? "-")}'
+                  : 'Loc: ${_sanitize(tx.fromLocation ?? "-")}'),
               _tableCell(_getPdfDetails(tx)),
               pw.Padding(
                 padding: const pw.EdgeInsets.all(5),
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: tx.repairReturnChecklist.map((item) {
-                    return pw.Text('${item.completed ? "[x]" : "[ ]"} ${item.label}',
+                    return pw.Text('${item.completed ? "[x]" : "[ ]"} ${_sanitize(item.label)}',
                         style: const pw.TextStyle(fontSize: 8));
                   }).toList(),
                 ),
@@ -287,10 +292,16 @@ class TransactionProvider with ChangeNotifier {
 
   String _getPdfDetails(Transaction tx) {
     List<String> details = [];
-    if (tx.vendorName?.isNotEmpty ?? false) details.add('Vendor: ${tx.vendorName}');
-    if (tx.serialNumber?.isNotEmpty ?? false) details.add('Serial: ${tx.serialNumber}');
-    if (tx.note?.isNotEmpty ?? false) details.add('Note: ${tx.note}');
+    if (tx.vendorName?.isNotEmpty ?? false) details.add('Vendor: ${_sanitize(tx.vendorName)}');
+    if (tx.serialNumber?.isNotEmpty ?? false) details.add('Serial: ${_sanitize(tx.serialNumber)}');
+    if (tx.note?.isNotEmpty ?? false) details.add('Note: ${_sanitize(tx.note)}');
     return details.join('\n');
+  }
+
+  String _sanitize(String? text) {
+    if (text == null) return '';
+    // Replace non-ASCII characters to avoid PDF font issues
+    return text.replaceAll(RegExp(r'[^\x00-\x7F]'), '?');
   }
 
   PdfColor _getPdfTypeColor(String type) {

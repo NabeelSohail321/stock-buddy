@@ -169,6 +169,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         SnackBar(
                           content: Text(transProv.errorMessage),
                           backgroundColor: Colors.red,
+                          duration: const Duration(seconds: 10), // Long duration
+                          action: SnackBarAction(
+                            label: 'OK',
+                            textColor: Colors.white,
+                            onPressed: () {},
+                          ),
                         ),
                       );
                       transProv.clearError();
