@@ -148,10 +148,35 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             : null,
         actions: [
           if (_selectedCategory != null)
-            IconButton(
-              icon: const Icon(Icons.picture_as_pdf),
-              onPressed: () => context.read<TransactionProvider>().exportTransactionsToPdf(),
-              tooltip: 'Download PDF',
+            Consumer<TransactionProvider>(
+              builder: (context, transProv, _) {
+                if (transProv.isLoading) {
+                  return const Padding(
+                    padding: EdgeInsets.all(12.0),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                    ),
+                  );
+                }
+                return IconButton(
+                  icon: const Icon(Icons.picture_as_pdf),
+                  onPressed: () async {
+                    await transProv.exportTransactionsToPdf();
+                    if (transProv.errorMessage.isNotEmpty && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(transProv.errorMessage),
+                          backgroundColor: Colors.red,
+                        ),
+                      );
+                      transProv.clearError();
+                    }
+                  },
+                  tooltip: 'Download PDF',
+                );
+              },
             ),
           IconButton(
             icon: const Icon(Icons.refresh),
