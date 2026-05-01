@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
@@ -165,20 +166,17 @@ class TransactionProvider with ChangeNotifier {
         ),
       );
 
-      final directory = await getTemporaryDirectory();
+      final pdfBytes = await pdf.save();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'transactions_$timestamp.pdf';
-      final file = File('${directory.path}/$fileName');
-      
-      await file.writeAsBytes(await pdf.save());
 
       _setLoading(false);
-      
-      // Use open_file and check for success
-      final result = await OpenFile.open(file.path);
-      if (result.type != ResultType.done) {
-        throw Exception(result.message);
-      }
+
+      // THE ULTIMATE IOS SOLUTION:
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdfBytes,
+        name: fileName,
+      );
     } catch (e) {
       _errorMessage = 'Failed to export PDF: $e';
       notifyListeners();
