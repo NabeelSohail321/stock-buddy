@@ -4,7 +4,6 @@ import 'package:html_to_pdf/html_to_pdf.dart';
 
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
-import 'package:printing/printing.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
 import 'package:share_plus/share_plus.dart';
