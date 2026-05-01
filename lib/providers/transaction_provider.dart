@@ -169,18 +169,16 @@ class TransactionProvider with ChangeNotifier {
       );
 
       if (Platform.isIOS) {
+        // Ensure the file exists before sharing
+        if (!await generatedPdfFile.exists()) {
+          throw Exception('PDF generation failed: File not found');
+        }
+
         // On iOS, use the native Share Sheet to preview/share the PDF.
         // This opens Quick Look PDF viewer via the system share dialog.
-        final xFile = XFile(
-          generatedPdfFile.path,
-          mimeType: 'application/pdf',
-          name: '$fileName.pdf',
-        );
-        await SharePlus.instance.share(
-          ShareParams(
-            files: [xFile],
-            subject: 'Stock Buddy - Transaction Report',
-          ),
+        await Share.shareXFiles(
+          [XFile(generatedPdfFile.path)],
+          subject: 'Stock Buddy - Transaction Report',
         );
       } else {
         // On Android (and other platforms), open the PDF directly.
