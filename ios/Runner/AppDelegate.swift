@@ -7,6 +7,13 @@ import UserNotifications
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate, MessagingDelegate {
 
+  // Fix for plugins that expect an explicit window property (like html_to_pdf)
+  override var window: UIWindow? {
+    get { return _window }
+    set { _window = newValue }
+  }
+  private var _window: UIWindow?
+
  override func application(
    _ application: UIApplication,
    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
