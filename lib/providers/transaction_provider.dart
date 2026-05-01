@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:html_to_pdf/html_to_pdf.dart';
+import 'package:flutter_html_to_pdf/flutter_html_to_pdf.dart';
 
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
@@ -158,14 +158,10 @@ class TransactionProvider with ChangeNotifier {
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'transactions_$timestamp';
       
-      final generatedPdfFile = await HtmlToPdf.convertFromHtmlContent(
-        htmlContent: htmlContent,
-        printPdfConfiguration: PrintPdfConfiguration(
-          targetDirectory: directory.path,
-          targetName: fileName,
-          printSize: PrintSize.A4,
-          printOrientation: PrintOrientation.Landscape,
-        ),
+      final generatedPdfFile = await FlutterHtmlToPdf.convertFromHtmlContent(
+        htmlContent,
+        directory.path,
+        fileName,
       );
 
       if (Platform.isIOS) {
@@ -201,7 +197,8 @@ class TransactionProvider with ChangeNotifier {
     <html>
     <head>
       <style>
-        body { font-family: Arial, sans-serif; margin: 20px; color: #333; }
+        @page { size: auto landscape; margin: 20px; }
+        body { font-family: Arial, sans-serif; margin: 0; color: #333; }
         .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #1a237e; padding-bottom: 10px; }
         .title { fontSize: 24px; font-weight: bold; color: #1a237e; }
         .subtitle { fontSize: 14px; color: #666; margin-top: 5px; }
