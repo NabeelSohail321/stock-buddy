@@ -41,6 +41,7 @@ class UserService {
         'password': password,
         'name': name,
         'role': role,
+        'isAuditApproved': role == 'audits',
       }),
     );
 
@@ -68,6 +69,7 @@ class UserService {
         'name': name,
         'role': role,
         'isActive': isActive,
+        'isAuditApproved': role == 'audits',
       }),
     );
 
