@@ -7,7 +7,6 @@ import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_file/open_file.dart';
-import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 
 class TransactionProvider with ChangeNotifier {
@@ -173,17 +172,8 @@ class TransactionProvider with ChangeNotifier {
       
       await file.writeAsBytes(await pdf.save());
 
-      if (Platform.isIOS) {
-        if (!await file.exists()) throw Exception('PDF file not found');
-        
-        // Explicitly set the mimeType and name for real iOS devices
-        await Share.shareXFiles(
-          [XFile(file.path, mimeType: 'application/pdf', name: fileName)], 
-          subject: 'Stock Buddy - Transaction Report',
-        );
-      } else {
-        await OpenFile.open(file.path);
-      }
+      // Use open_file for all platforms to avoid share_plus native crashes
+      await OpenFile.open(file.path);
     } catch (e) {
       _errorMessage = 'Failed to export PDF: $e';
       notifyListeners();
