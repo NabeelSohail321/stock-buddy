@@ -172,10 +172,10 @@ class TransactionProvider with ChangeNotifier {
 
       _setLoading(false);
 
-      // THE ULTIMATE IOS SOLUTION:
-      await Printing.layoutPdf(
-        onLayout: (PdfPageFormat format) async => pdfBytes,
-        name: fileName,
+      // This goes straight to the Share Sheet, bypassing the buggy previewer.
+      await Printing.sharePdf(
+        bytes: pdfBytes,
+        filename: fileName,
       );
     } catch (e) {
       _errorMessage = 'Failed to export PDF: $e';
