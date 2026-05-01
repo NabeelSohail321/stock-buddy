@@ -1,7 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:printing/printing.dart';
 import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
@@ -146,44 +146,38 @@ class TransactionProvider with ChangeNotifier {
       _setLoading(true);
       _errorMessage = '';
 
-      // Use the currently loaded transactions for the export
       final transactions = _allTransactions;
-      
-      if (transactions.isEmpty) {
-        throw Exception('No transactions to export');
-      }
+      if (transactions.isEmpty) throw Exception('No transactions to export');
 
-      final htmlContent = _generateExportHtml(transactions);
+      // Generate PDF in pure Dart (No native WebView = No crashes!)
+      final pdf = pw.Document();
+      final dateStr = DateFormat('MMM dd, yyyy').format(DateTime.now());
+
+      pdf.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.all(32),
+          build: (context) => [
+            _buildPdfHeader(dateStr),
+            pw.SizedBox(height: 20),
+            _buildPdfTable(transactions),
+            _buildPdfFooter(),
+          ],
+        ),
+      );
 
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
       final fileName = 'transactions_$timestamp.pdf';
-      final filePath = '${directory.path}/$fileName';
-
-      // Use the stable printing package to convert HTML to PDF bytes
-      final pdfBytes = await Printing.convertHtml(
-        html: htmlContent,
-        format: PdfPageFormat.a4.landscape,
-      );
-
-      final generatedPdfFile = File(filePath);
-      await generatedPdfFile.writeAsBytes(pdfBytes);
+      final file = File('${directory.path}/$fileName');
+      
+      await file.writeAsBytes(await pdf.save());
 
       if (Platform.isIOS) {
-        // Ensure the file exists before sharing
-        if (!await generatedPdfFile.exists()) {
-          throw Exception('PDF generation failed: File not found');
-        }
-
-        // On iOS, use the native Share Sheet to preview/share the PDF.
-        // This opens Quick Look PDF viewer via the system share dialog.
-        await Share.shareXFiles(
-          [XFile(generatedPdfFile.path)],
-          subject: 'Stock Buddy - Transaction Report',
-        );
+        if (!await file.exists()) throw Exception('PDF file not found');
+        await Share.shareXFiles([XFile(file.path)], subject: 'Transaction Report');
       } else {
-        // On Android (and other platforms), open the PDF directly.
-        await OpenFile.open(generatedPdfFile.path);
+        await OpenFile.open(file.path);
       }
     } catch (e) {
       _errorMessage = 'Failed to export PDF: $e';
@@ -193,124 +187,135 @@ class TransactionProvider with ChangeNotifier {
     }
   }
 
-  String _generateExportHtml(List<Transaction> transactions) {
-    final dateStr = DateFormat('MMM dd, yyyy').format(DateTime.now());
-    
-    StringBuffer html = StringBuffer();
-    html.write('''
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        @page { size: auto landscape; margin: 20px; }
-        body { font-family: Arial, sans-serif; margin: 0; color: #333; }
-        .header { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #1a237e; padding-bottom: 10px; }
-        .title { fontSize: 24px; font-weight: bold; color: #1a237e; }
-        .subtitle { fontSize: 14px; color: #666; margin-top: 5px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
-        th { background-color: #1a237e; color: white; padding: 10px; text-align: left; fontSize: 12px; }
-        td { padding: 8px; border-bottom: 1px solid #ddd; fontSize: 11px; vertical-align: top; word-wrap: break-word; }
-        .type-badge { padding: 3px 6px; border-radius: 4px; font-weight: bold; fontSize: 10px; color: white; }
-        .type-add { background-color: #4caf50; }
-        .type-transfer { background-color: #2196f3; }
-        .type-repair-out { background-color: #9c27b0; }
-        .type-repair-in { background-color: #3f51b5; }
-        .type-dispose { background-color: #f44336; }
-        .checklist { margin: 0; padding-left: 15px; fontSize: 10px; }
-        .checklist-item { margin-bottom: 2px; }
-        .completed { color: #4caf50; }
-        .pending { color: #f57c00; }
-        .footer { margin-top: 30px; text-align: center; fontSize: 10px; color: #999; }
-      </style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="title">Stock Buddy - Transaction Report</div>
-        <div class="subtitle">Generated on $dateStr</div>
-      </div>
-      
-      <table>
-        <thead>
-          <tr>
-            <th style="width: 12%">Date</th>
-            <th style="width: 10%">Type</th>
-            <th style="width: 15%">Item</th>
-            <th style="width: 8%">Qty</th>
-            <th style="width: 15%">Location(s)</th>
-            <th style="width: 15%">Details</th>
-            <th style="width: 25%">Repair Checklist</th>
-          </tr>
-        </thead>
-        <tbody>
-    ''');
-
-    for (var tx in transactions) {
-      final typeClass = _getTypeClass(tx.type);
-      final date = DateFormat('yyyy-MM-dd HH:mm').format(tx.createdAt);
-      
-      String locations = '';
-      if (tx.type == 'TRANSFER') {
-        locations = 'From: ${tx.fromLocation ?? tx.fromLocationId ?? "-"}<br>To: ${tx.toLocation ?? tx.toLocationId ?? "-"}';
-      } else {
-        locations = 'Loc: ${tx.fromLocation ?? tx.fromLocationId ?? "-"}';
-      }
-
-      String details = '';
-      if (tx.vendorName != null && tx.vendorName!.isNotEmpty) {
-        details += 'Vendor: ${tx.vendorName}<br>';
-      }
-      if (tx.serialNumber != null && tx.serialNumber!.isNotEmpty) {
-        details += 'Serial: ${tx.serialNumber}<br>';
-      }
-      if (tx.note != null && tx.note!.isNotEmpty) {
-        details += 'Note: ${tx.note}';
-      }
-
-      String checklistHtml = '';
-      if (tx.repairReturnChecklist.isNotEmpty) {
-        checklistHtml = '<ul class="checklist">';
-        for (var item in tx.repairReturnChecklist) {
-          final status = item.completed ? '<span class="completed">✓</span>' : '<span class="pending">○</span>';
-          checklistHtml += '<li class="checklist-item">$status ${item.label}</li>';
-        }
-        checklistHtml += '</ul>';
-      }
-
-      html.write('''
-          <tr>
-            <td>$date</td>
-            <td><span class="type-badge $typeClass">${tx.displayType}</span></td>
-            <td>${tx.itemName}</td>
-            <td>${tx.quantity}</td>
-            <td>$locations</td>
-            <td>$details</td>
-            <td>$checklistHtml</td>
-          </tr>
-      ''');
-    }
-
-    html.write('''
-        </tbody>
-      </table>
-      <div class="footer">
-        © ${DateTime.now().year} Stock Buddy Inventory Management System
-      </div>
-    </body>
-    </html>
-    ''');
-    
-    return html.toString();
+  pw.Widget _buildPdfHeader(String date) {
+    return pw.Container(
+      decoration: const pw.BoxDecoration(
+        border: pw.Border(bottom: pw.BorderSide(color: PdfColors.indigo, width: 2)),
+      ),
+      padding: const pw.EdgeInsets.only(bottom: 10),
+      child: pw.Row(
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text('Stock Buddy',
+                  style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo)),
+              pw.Text('Transaction Report', style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
+            ],
+          ),
+          pw.Text('Generated: $date', style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey)),
+        ],
+      ),
+    );
   }
 
-  String _getTypeClass(String type) {
+  pw.Widget _buildPdfTable(List<Transaction> transactions) {
+    return pw.Table(
+      border: pw.TableBorder.all(color: PdfColors.grey300),
+      columnWidths: {
+        0: const pw.FlexColumnWidth(1.2), // Date
+        1: const pw.FlexColumnWidth(0.8), // Type
+        2: const pw.FlexColumnWidth(1.5), // Item
+        3: const pw.FlexColumnWidth(0.5), // Qty
+        4: const pw.FlexColumnWidth(1.5), // Location
+        5: const pw.FlexColumnWidth(1.5), // Details
+        6: const pw.FlexColumnWidth(2.0), // Checklist
+      },
+      children: [
+        pw.TableRow(
+          decoration: const pw.BoxDecoration(color: PdfColors.indigo),
+          children: [
+            _tableHeader('Date'),
+            _tableHeader('Type'),
+            _tableHeader('Item'),
+            _tableHeader('Qty'),
+            _tableHeader('Location'),
+            _tableHeader('Details'),
+            _tableHeader('Checklist'),
+          ],
+        ),
+        ...transactions.map((tx) {
+          final date = DateFormat('yyyy-MM-dd HH:mm').format(tx.createdAt);
+          return pw.TableRow(
+            children: [
+              _tableCell(date),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(5),
+                child: pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  decoration: pw.BoxDecoration(
+                    color: _getPdfTypeColor(tx.type),
+                    borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                  ),
+                  child: pw.Text(tx.displayType,
+                      style: const pw.TextStyle(fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+                ),
+              ),
+              _tableCell(tx.itemName),
+              _tableCell('${tx.quantity}'),
+              _tableCell(tx.type == 'TRANSFER'
+                  ? 'From: ${tx.fromLocation ?? "-"}\nTo: ${tx.toLocation ?? "-"}'
+                  : 'Loc: ${tx.fromLocation ?? "-"}'),
+              _tableCell(_getPdfDetails(tx)),
+              pw.Padding(
+                padding: const pw.EdgeInsets.all(5),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: tx.repairReturnChecklist.map((item) {
+                    return pw.Text('${item.completed ? "[x]" : "[ ]"} ${item.label}',
+                        style: const pw.TextStyle(fontSize: 8));
+                  }).toList(),
+                ),
+              ),
+            ],
+          );
+        }),
+      ],
+    );
+  }
+
+  pw.Widget _tableHeader(String text) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(5),
+      child: pw.Text(text,
+          style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold, color: PdfColors.white)),
+    );
+  }
+
+  pw.Widget _tableCell(String text) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(5),
+      child: pw.Text(text, style: const pw.TextStyle(fontSize: 8)),
+    );
+  }
+
+  String _getPdfDetails(Transaction tx) {
+    List<String> details = [];
+    if (tx.vendorName?.isNotEmpty ?? false) details.add('Vendor: ${tx.vendorName}');
+    if (tx.serialNumber?.isNotEmpty ?? false) details.add('Serial: ${tx.serialNumber}');
+    if (tx.note?.isNotEmpty ?? false) details.add('Note: ${tx.note}');
+    return details.join('\n');
+  }
+
+  PdfColor _getPdfTypeColor(String type) {
     switch (type) {
-      case 'ADD': return 'type-add';
-      case 'TRANSFER': return 'type-transfer';
-      case 'REPAIR_OUT': return 'type-repair-out';
-      case 'REPAIR_IN': return 'type-repair-in';
-      case 'DISPOSE': return 'type-dispose';
-      default: return '';
+      case 'ADD': return PdfColors.green;
+      case 'TRANSFER': return PdfColors.blue;
+      case 'REPAIR_OUT': return PdfColors.purple;
+      case 'REPAIR_IN': return PdfColors.indigo;
+      case 'DISPOSE': return PdfColors.red;
+      default: return PdfColors.grey;
     }
+  }
+
+  pw.Widget _buildPdfFooter() {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(top: 20),
+      alignment: pw.Alignment.center,
+      child: pw.Text('© ${DateTime.now().year} Stock Buddy Inventory Management System',
+          style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
+    );
   }
 
   Future<bool> updateRepairChecklist(String transactionId, List<Map<String, dynamic>> items) async {
