@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:flutter_html_to_pdf/flutter_html_to_pdf.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
 
 import '../models/transaction_model.dart';
 import '../services/transaction_service.dart';
@@ -156,13 +157,17 @@ class TransactionProvider with ChangeNotifier {
 
       final directory = await getApplicationDocumentsDirectory();
       final timestamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
-      final fileName = 'transactions_$timestamp';
-      
-      final generatedPdfFile = await FlutterHtmlToPdf.convertFromHtmlContent(
-        htmlContent,
-        directory.path,
-        fileName,
+      final fileName = 'transactions_$timestamp.pdf';
+      final filePath = '${directory.path}/$fileName';
+
+      // Use the stable printing package to convert HTML to PDF bytes
+      final pdfBytes = await Printing.convertHtml(
+        html: htmlContent,
+        format: PdfPageFormat.a4.landscape,
       );
+
+      final generatedPdfFile = File(filePath);
+      await generatedPdfFile.writeAsBytes(pdfBytes);
 
       if (Platform.isIOS) {
         // Ensure the file exists before sharing
