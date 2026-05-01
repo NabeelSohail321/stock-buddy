@@ -176,9 +176,9 @@ class TransactionProvider with ChangeNotifier {
       if (Platform.isIOS) {
         if (!await file.exists()) throw Exception('PDF file not found');
         
-        // Explicitly set the mimeType for real iOS devices
+        // Explicitly set the mimeType and name for real iOS devices
         await Share.shareXFiles(
-          [XFile(file.path, mimeType: 'application/pdf')], 
+          [XFile(file.path, mimeType: 'application/pdf', name: fileName)], 
           subject: 'Stock Buddy - Transaction Report',
         );
       } else {
