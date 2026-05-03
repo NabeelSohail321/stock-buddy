@@ -71,9 +71,11 @@ class Item {
       stockStatus: json['stockStatus']?.toString(),
       status: json['status']?.toString(),
       image: json['image']?.toString(), // Parse the new image field
-      modelNumber: json['model_number']?.toString(),
-      serialNumber: json['serial_number']?.toString(),
-      purchaseDate: json['purchase_date'] != null ? DateTime.tryParse(json['purchase_date'].toString()) : null,
+      modelNumber: (json['modelNumber'] ?? json['model_number'])?.toString(),
+      serialNumber: (json['serialNumber'] ?? json['serial_number'])?.toString(),
+      purchaseDate: (json['purchaseDate'] ?? json['purchase_date']) != null 
+          ? DateTime.tryParse((json['purchaseDate'] ?? json['purchase_date']).toString()) 
+          : null,
       locations: json['locations'] is List
           ? (json['locations'] as List).map((loc) => ItemLocation.fromJson(loc)).toList()
           : [],

@@ -566,6 +566,10 @@ class _ItemManagementScreenState extends State<ItemManagementScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (item.modelNumber != null && item.modelNumber!.isNotEmpty)
+              Text('Model: ${item.modelNumber}'),
+            if (item.serialNumber != null && item.serialNumber!.isNotEmpty)
+              Text('Serial: ${item.serialNumber}'),
             if (sku.isNotEmpty) Text('SKU: $sku'),
             if (barcode.isNotEmpty) Text('Barcode: $barcode'),
             Text('Unit: $unit • Threshold: $threshold'),

@@ -179,6 +179,9 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
                       final sku = item['sku'] ?? 'No SKU';
                       final unit = item['unit'] ?? 'units';
                       final threshold = item['threshold'] ?? 0;
+                      final modelNumber = (item['modelNumber'] ?? item['model_number'])?.toString();
+                      final serialNumber = (item['serialNumber'] ?? item['serial_number'])?.toString();
+                      final barcode = item['barcode']?.toString();
 
                       return Card(
                         margin: const EdgeInsets.only(bottom: 12),
@@ -235,6 +238,12 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
                               const SizedBox(height: 12),
 
                               // Stock details
+                              if (modelNumber != null && modelNumber.isNotEmpty)
+                                _buildStockDetailRow('Model:', modelNumber),
+                              if (serialNumber != null && serialNumber.isNotEmpty)
+                                _buildStockDetailRow('Serial:', serialNumber),
+                              if (barcode != null && barcode.isNotEmpty)
+                                _buildStockDetailRow('Barcode:', barcode),
                               _buildStockDetailRow('Quantity:', '$quantity $unit'),
                               _buildStockDetailRow('Threshold:', '$threshold $unit'),
                               _buildStockDetailRow('Status:', _getStockStatusText(status).toUpperCase()),

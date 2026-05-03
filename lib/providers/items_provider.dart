@@ -26,12 +26,12 @@ class ItemsProvider with ChangeNotifier {
   // Update the createItem method in ItemsProvider
   Future<bool> createItem({
     required String name,
-    required String sku,
+    String? sku, // Made sku optional
     required String barcode,
     required String unit,
     required int threshold,
     required List<String> locations,
-    String? image, // Add optional image parameter
+    String? image,
     String? modelNumber,
     String? serialNumber,
     String? purchaseDate,
@@ -41,9 +41,12 @@ class ItemsProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // Auto-generate SKU if not provided
+      final effectiveSku = (sku == null || sku.isEmpty) ? generateSku() : sku;
+
       final newItem = await _itemsService.createItem(
         name: name,
-        sku: sku,
+        sku: effectiveSku,
         barcode: barcode,
         unit: unit,
         threshold: threshold,
@@ -290,6 +293,8 @@ class ItemsProvider with ChangeNotifier {
     required String unit,
     required int threshold,
     required String status,
+    String? modelNumber,
+    String? serialNumber,
   }) async {
     _isLoading = true;
     _errorMessage = '';
@@ -302,6 +307,8 @@ class ItemsProvider with ChangeNotifier {
         unit: unit,
         threshold: threshold,
         status: status,
+        modelNumber: modelNumber,
+        serialNumber: serialNumber,
       );
 
       // Update the item in the local list
@@ -327,6 +334,15 @@ class ItemsProvider with ChangeNotifier {
     // Generate a random 12-digit barcode
     final random = DateTime.now().millisecondsSinceEpoch.toString();
     return random.substring(random.length - 12).padLeft(12, '0');
+  }
+
+  // SKU generation utility
+  String generateSku() {
+    // Generate a unique SKU using timestamp and random number
+    final timestamp = DateTime.now().millisecondsSinceEpoch.toString();
+    // Use last 6 digits of timestamp + 4 random-ish digits from microseconds
+    final randomPart = (DateTime.now().microsecondsSinceEpoch % 10000).toString().padLeft(4, '0');
+    return 'SKU-${timestamp.substring(timestamp.length - 6)}$randomPart';
   }
 
 

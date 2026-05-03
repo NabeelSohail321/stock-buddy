@@ -626,7 +626,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  item.name,
+                  '${item.name}${item.modelNumber != null && item.modelNumber!.isNotEmpty ? " (${item.modelNumber})" : ""}',
                   style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 ),
                 // if (item.sku != null && item.sku!.isNotEmpty)

@@ -17,7 +17,6 @@ class CreateItemScreen extends StatefulWidget {
 class _CreateItemScreenState extends State<CreateItemScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
-  final _skuController = TextEditingController();
   final _barcodeController = TextEditingController();
   final _thresholdController = TextEditingController(text: '0');
   final _modelNumberController = TextEditingController();
@@ -65,7 +64,6 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   @override
   void dispose() {
     _nameController.dispose();
-    _skuController.dispose();
     _barcodeController.dispose();
     _thresholdController.dispose();
     _modelNumberController.dispose();
@@ -96,7 +94,6 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
 
       final success = await itemsProvider.createItem(
         name: _nameController.text.trim(),
-        sku: _skuController.text.trim(),
         barcode: barcode,
         unit: _selectedUnit,
         threshold: int.tryParse(_thresholdController.text) ?? 0,
@@ -596,18 +593,6 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                       ),
                       const SizedBox(height: 16),
 
-                      // SKU Field
-                      TextFormField(
-                        controller: _skuController,
-                        decoration: InputDecoration(
-                          labelText: 'SKU (Optional)',
-                          prefixIcon: const Icon(Icons.tag_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          hintText: 'e.g., LP-DELL-XPS13-001',
-                        ),
-                      ),
                       const SizedBox(height: 16),
 
                       // Model Number and Serial Number Row (Desktop) or Column (Mobile)

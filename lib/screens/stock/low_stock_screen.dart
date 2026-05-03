@@ -323,6 +323,10 @@ class _LowStockScreenState extends State<LowStockScreen> {
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (item.modelNumber != null && item.modelNumber!.isNotEmpty)
+              Text('Model: ${item.modelNumber}'),
+            if (item.serialNumber != null && item.serialNumber!.isNotEmpty)
+              Text('Serial: ${item.serialNumber}'),
             Text('SKU: ${item.sku}'),
             const SizedBox(height: 4),
             Row(

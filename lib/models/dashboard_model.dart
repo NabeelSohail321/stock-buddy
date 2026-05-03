@@ -54,6 +54,8 @@ class LowStockItem {
   final String sku;
   final int currentStock;
   final int threshold;
+  final String? modelNumber;
+  final String? serialNumber;
 
   LowStockItem({
     required this.id,
@@ -61,6 +63,8 @@ class LowStockItem {
     required this.sku,
     required this.currentStock,
     required this.threshold,
+    this.modelNumber,
+    this.serialNumber,
   });
 
   factory LowStockItem.fromJson(Map<String, dynamic> json) {
@@ -70,6 +74,8 @@ class LowStockItem {
       sku: json['sku']?.toString() ?? '',
       currentStock: json['currentStock'] is int ? json['currentStock'] : int.tryParse(json['currentStock']?.toString() ?? '0') ?? 0,
       threshold: json['threshold'] is int ? json['threshold'] : int.tryParse(json['threshold']?.toString() ?? '0') ?? 0,
+      modelNumber: (json['modelNumber'] ?? json['model_number'])?.toString(),
+      serialNumber: (json['serialNumber'] ?? json['serial_number'])?.toString(),
     );
   }
 

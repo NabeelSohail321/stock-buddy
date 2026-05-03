@@ -50,15 +50,13 @@ class ItemsService {
       }
 
       if (modelNumber != null && modelNumber.isNotEmpty) {
-        requestBody['model_number'] = modelNumber;
+        requestBody['modelNumber'] = modelNumber;
       }
-
       if (serialNumber != null && serialNumber.isNotEmpty) {
-        requestBody['serial_number'] = serialNumber;
+        requestBody['serialNumber'] = serialNumber;
       }
-
       if (purchaseDate != null && purchaseDate.isNotEmpty) {
-        requestBody['purchase_date'] = purchaseDate;
+        requestBody['purchaseDate'] = purchaseDate;
       }
 
       final response = await client.post(
@@ -353,6 +351,8 @@ class ItemsService {
     required String unit,
     required int threshold,
     required String status,
+    String? modelNumber,
+    String? serialNumber,
   }) async {
     final token = await getToken();
     if (token == null) {
@@ -360,18 +360,23 @@ class ItemsService {
     }
 
     try {
+      final Map<String, dynamic> body = {
+        'name': name,
+        'unit': unit,
+        'threshold': threshold,
+        'status': status,
+      };
+
+      if (modelNumber != null) body['modelNumber'] = modelNumber;
+      if (serialNumber != null) body['serialNumber'] = serialNumber;
+
       final response = await client.put(
         Uri.parse('${ApiConstants.baseUrl}/items/$id'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({
-          'name': name,
-          'unit': unit,
-          'threshold': threshold,
-          'status': status,
-        }),
+        body: jsonEncode(body),
       ).timeout(ApiConstants.connectTimeout);
 
       print('Update Item Response Status: ${response.statusCode}');

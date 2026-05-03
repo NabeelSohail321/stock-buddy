@@ -256,10 +256,12 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
             // Logic for Serial Number / Ticket ID
             String displaySerial = _getDisplaySerial(ticket);
 
+            final modelNumber = itemId is Map ? (itemId['modelNumber'] ?? itemId['model_number'])?.toString() : null;
+
             return DropdownMenuItem<String>(
               value: ticket['_id'],
               child: Text(
-                '$displaySerial - $itemName',
+                '$displaySerial - $itemName${modelNumber != null && modelNumber.isNotEmpty ? " ($modelNumber)" : ""}',
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontSize: 14),
               ),

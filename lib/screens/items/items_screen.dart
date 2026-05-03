@@ -469,6 +469,22 @@ class _ItemsScreenState extends State<ItemsScreen> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 4),
+                      if (item.modelNumber != null && item.modelNumber!.isNotEmpty)
+                        Text(
+                          'Model: ${item.modelNumber}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      if (item.serialNumber != null && item.serialNumber!.isNotEmpty)
+                        Text(
+                          'Serial: ${item.serialNumber}',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey,
+                          ),
+                        ),
                       Text(
                         'SKU: ${item.sku}',
                         style: const TextStyle(

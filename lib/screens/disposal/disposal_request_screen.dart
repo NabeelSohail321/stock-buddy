@@ -739,7 +739,7 @@ class _DisposalRequestScreenState extends State<DisposalRequestScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    item.name,
+                    '${item.name}${item.modelNumber != null && item.modelNumber!.isNotEmpty ? " (${item.modelNumber})" : ""}',
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                   // Text(

@@ -18,6 +18,8 @@ class _EditItemScreenState extends State<EditItemScreen> {
   final _skuController = TextEditingController();
   final _barcodeController = TextEditingController();
   final _thresholdController = TextEditingController();
+  final _modelNumberController = TextEditingController();
+  final _serialNumberController = TextEditingController();
 
   String _selectedUnit = 'pieces';
   String _selectedStatus = 'active';
@@ -38,6 +40,8 @@ class _EditItemScreenState extends State<EditItemScreen> {
     _skuController.text = widget.item.sku ?? '';
     _barcodeController.text = widget.item.barcode ?? '';
     _thresholdController.text = widget.item.threshold?.toString() ?? '0';
+    _modelNumberController.text = widget.item.modelNumber ?? '';
+    _serialNumberController.text = widget.item.serialNumber ?? '';
 
     // Handle unit conversion - if item has 'pcs', use 'pieces' or add to options
     final itemUnit = widget.item.unit ?? 'pieces';
@@ -72,6 +76,8 @@ class _EditItemScreenState extends State<EditItemScreen> {
     _skuController.dispose();
     _barcodeController.dispose();
     _thresholdController.dispose();
+    _modelNumberController.dispose();
+    _serialNumberController.dispose();
     super.dispose();
   }
 
@@ -85,6 +91,8 @@ class _EditItemScreenState extends State<EditItemScreen> {
         unit: _selectedUnit,
         threshold: int.tryParse(_thresholdController.text) ?? 0,
         status: _selectedStatus,
+        modelNumber: _modelNumberController.text.trim(),
+        serialNumber: _serialNumberController.text.trim(),
       );
 
       if (success && mounted) {
@@ -118,129 +126,147 @@ class _EditItemScreenState extends State<EditItemScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              TextFormField(
-                controller: _nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Item Name *',
-                  border: OutlineInputBorder(),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              children: [
+                TextFormField(
+                  controller: _nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Item Name *',
+                    border: OutlineInputBorder(),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter item name';
+                    }
+                    return null;
+                  },
                 ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter item name';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _skuController,
-                decoration: const InputDecoration(
-                  labelText: 'SKU',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _skuController,
+                  decoration: const InputDecoration(
+                    labelText: 'SKU',
+                    border: OutlineInputBorder(),
+                  ),
+                  readOnly: true, // SKU should not be editable
                 ),
-                readOnly: true, // SKU should not be editable
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _barcodeController,
-                decoration: const InputDecoration(
-                  labelText: 'Barcode',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _barcodeController,
+                  decoration: const InputDecoration(
+                    labelText: 'Barcode',
+                    border: OutlineInputBorder(),
+                  ),
+                  readOnly: true, // Barcode should be managed separately
                 ),
-                readOnly: true, // Barcode should be managed separately
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedUnit,
-                decoration: const InputDecoration(
-                  labelText: 'Unit *',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _modelNumberController,
+                  decoration: const InputDecoration(
+                    labelText: 'Model Number',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                items: _unitOptions.map((unit) => DropdownMenuItem(
-                  value: unit,
-                  child: Text(unit),
-                )).toList(),
-                onChanged: (value) {
-                  setState(() {
-                    _selectedUnit = value!;
-                  });
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _thresholdController,
-                decoration: const InputDecoration(
-                  labelText: 'Low Stock Threshold *',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _serialNumberController,
+                  decoration: const InputDecoration(
+                    labelText: 'Serial Number',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                keyboardType: TextInputType.number,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter threshold';
-                  }
-                  if (int.tryParse(value) == null) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              DropdownButtonFormField<String>(
-                value: _selectedStatus,
-                decoration: const InputDecoration(
-                  labelText: 'Status *',
-                  border: OutlineInputBorder(),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _selectedUnit,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit *',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _unitOptions.map((unit) => DropdownMenuItem(
+                    value: unit,
+                    child: Text(unit),
+                  )).toList(),
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedUnit = value!;
+                    });
+                  },
                 ),
-                items: [
-                  DropdownMenuItem(
-                    value: 'active',
-                    child: Row(
-                      children: const [
-                        Icon(Icons.check_circle, color: Colors.green),
-                        SizedBox(width: 8),
-                        Text('Active'),
-                      ],
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: _thresholdController,
+                  decoration: const InputDecoration(
+                    labelText: 'Low Stock Threshold *',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter threshold';
+                    }
+                    if (int.tryParse(value) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: _selectedStatus,
+                  decoration: const InputDecoration(
+                    labelText: 'Status *',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    DropdownMenuItem(
+                      value: 'active',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.check_circle, color: Colors.green),
+                          SizedBox(width: 8),
+                          Text('Active'),
+                        ],
+                      ),
+                    ),
+                    DropdownMenuItem(
+                      value: 'inactive',
+                      child: Row(
+                        children: const [
+                          Icon(Icons.remove_circle, color: Colors.orange),
+                          SizedBox(width: 8),
+                          Text('Inactive'),
+                        ],
+                      ),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    setState(() {
+                      _selectedStatus = value!;
+                    });
+                  },
+                ),
+                const SizedBox(height: 24),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _updateItem,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: Colors.orange,
+                    ),
+                    child: const Text(
+                      'Update Item',
+                      style: TextStyle(fontSize: 16),
                     ),
                   ),
-                  DropdownMenuItem(
-                    value: 'inactive',
-                    child: Row(
-                      children: const [
-                        Icon(Icons.remove_circle, color: Colors.orange),
-                        SizedBox(width: 8),
-                        Text('Inactive'),
-                      ],
-                    ),
-                  ),
-                ],
-                onChanged: (value) {
-                  setState(() {
-                    _selectedStatus = value!;
-                  });
-                },
-              ),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: _updateItem,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: Colors.orange,
-                  ),
-                  child: const Text(
-                    'Update Item',
-                    style: TextStyle(fontSize: 16),
-                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
