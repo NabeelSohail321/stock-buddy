@@ -4,6 +4,7 @@ import 'package:stock_buddy/providers/stock_provider.dart';
 import 'package:stock_buddy/models/location_model.dart';
 import 'package:intl/intl.dart';
 import 'package:stock_buddy/models/item_model.dart';
+import 'package:stock_buddy/providers/items_provider.dart';
 
 class StockByLocationScreen extends StatefulWidget {
   final Location location;
@@ -280,180 +281,266 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
 
   void _showItemDetailSheet(BuildContext context, Map<String, dynamic> stockData) {
     final itemData = stockData['item'];
-    final item = Item.fromJson(itemData);
+    final String itemId = itemData is String 
+        ? itemData 
+        : (itemData['_id']?.toString() ?? itemData['id']?.toString() ?? '');
+    
     final currentQuantity = stockData['quantity'] ?? 0;
     final status = stockData['status'] ?? 'unknown';
     
+    if (itemId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: Item ID not found')),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (context) {
         return DraggableScrollableSheet(
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
           expand: false,
           builder: (context, scrollController) {
-            return SingleChildScrollView(
-              controller: scrollController,
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Handle bar
-                  Center(
-                    child: Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[300],
-                        borderRadius: BorderRadius.circular(2),
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: FutureBuilder<Item?>(
+                future: Provider.of<ItemsProvider>(context, listen: false).getItemById(itemId),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(),
+                          SizedBox(height: 16),
+                          Text('Fetching complete item details...'),
+                        ],
                       ),
-                    ),
-                  ),
-                  
-                  // Header
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Colors.blue.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(12),
+                    );
+                  }
+
+                  if (snapshot.hasError || snapshot.data == null) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline, color: Colors.red, size: 48),
+                          const SizedBox(height: 16),
+                          Text(
+                            snapshot.hasError 
+                                ? 'Error: ${snapshot.error}' 
+                                : 'Could not find item details',
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            child: const Text('Go Back'),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
+
+                  final item = snapshot.data!;
+
+                  return SingleChildScrollView(
+                    controller: scrollController,
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Handle bar
+                        Center(
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 24),
+                            decoration: BoxDecoration(
+                              color: Colors.grey[300],
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
                         ),
-                        child: item.hasImage
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.network(
-                                  item.image!,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) =>
-                                      const Icon(Icons.inventory_2, color: Colors.blue, size: 40),
-                                ),
-                              )
-                            : const Icon(Icons.inventory_2, color: Colors.blue, size: 40),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
+                        
+                        // Header
+                        Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              item.name,
-                              style: const TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'SKU: ${item.sku ?? "N/A"}',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                            const SizedBox(height: 8),
                             Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              width: 90,
+                              height: 90,
                               decoration: BoxDecoration(
-                                color: _getStockStatusColor(status).withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(20),
+                                color: Colors.blue.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(16),
+                                border: Border.all(color: Colors.blue.withOpacity(0.2)),
                               ),
-                              child: Text(
-                                _getStockStatusText(status).toUpperCase(),
-                                style: TextStyle(
-                                  color: _getStockStatusColor(status),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
+                              child: item.hasImage
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Image.network(
+                                        item.image!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) =>
+                                            const Icon(Icons.inventory_2, color: Colors.blue, size: 45),
+                                      ),
+                                    )
+                                  : const Icon(Icons.inventory_2, color: Colors.blue, size: 45),
+                            ),
+                            const SizedBox(width: 20),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.name,
+                                    style: const TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'SKU: ${item.sku ?? "N/A"}',
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey[600],
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                                    decoration: BoxDecoration(
+                                      color: _getStockStatusColor(status).withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(20),
+                                      border: Border.all(color: _getStockStatusColor(status).withOpacity(0.3)),
+                                    ),
+                                    child: Text(
+                                      _getStockStatusText(status).toUpperCase(),
+                                      style: TextStyle(
+                                        color: _getStockStatusColor(status).shade700,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                      ),
-                    ],
-                  ),
-                  
-                  const Divider(height: 40),
-                  
-                  // Identification Section
-                  _buildSectionTitle('Identification'),
-                  _buildDetailRow(Icons.tag, 'Barcode', item.barcode ?? 'N/A'),
-                  _buildDetailRow(Icons.model_training, 'Model No', item.modelNumber ?? 'N/A'),
-                  _buildDetailRow(Icons.numbers, 'Serial No', item.serialNumber ?? 'N/A'),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Inventory Section
-                  _buildSectionTitle('Inventory Status'),
-                  _buildDetailRow(
-                    Icons.location_on, 
-                    'At this Location', 
-                    '$currentQuantity ${item.unit ?? "units"}'
-                  ),
-                  _buildDetailRow(
-                    Icons.inventory, 
-                    'Total Stock', 
-                    '${item.totalStock ?? currentQuantity} ${item.unit ?? "units"}'
-                  ),
-                  _buildDetailRow(
-                    Icons.warning_amber_rounded, 
-                    'Threshold', 
-                    '${item.threshold ?? 0} ${item.unit ?? "units"}'
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Metadata Section
-                  _buildSectionTitle('Information'),
-                  _buildDetailRow(
-                    Icons.calendar_today, 
-                    'Purchase Date', 
-                    item.purchaseDate != null 
-                        ? DateFormat('MMM dd, yyyy').format(item.purchaseDate!) 
-                        : 'N/A'
-                  ),
-                  _buildDetailRow(
-                    Icons.history, 
-                    'Created At', 
-                    item.createdAt != null 
-                        ? DateFormat('MMM dd, yyyy HH:mm').format(item.createdAt!) 
-                        : 'N/A'
-                  ),
-                  _buildDetailRow(
-                    Icons.edit_note, 
-                    'Last Updated', 
-                    item.updatedAt != null 
-                        ? DateFormat('MMM dd, yyyy HH:mm').format(item.updatedAt!) 
-                        : 'N/A'
-                  ),
-                  
-                  const SizedBox(height: 40),
-                  
-                  // Action button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.blue,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
+                        
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 24.0),
+                          child: Divider(),
                         ),
-                      ),
-                      child: const Text('Close Details'),
+                        
+                        // Identification Section
+                        _buildSectionTitle('IDENTIFICATION'),
+                        _buildDetailRow(Icons.qr_code, 'Barcode', item.barcode ?? 'N/A'),
+                        _buildDetailRow(Icons.model_training, 'Model No', item.modelNumber ?? 'N/A'),
+                        _buildDetailRow(Icons.numbers, 'Serial No', item.serialNumber ?? 'N/A'),
+                        
+                        const SizedBox(height: 28),
+                        
+                        // Inventory Section
+                        _buildSectionTitle('INVENTORY STATUS'),
+                        _buildDetailRow(
+                          Icons.location_on, 
+                          'At this Location', 
+                          '$currentQuantity ${item.unit ?? "units"}'
+                        ),
+                        _buildDetailRow(
+                          Icons.warehouse, 
+                          'Total Stock (All)', 
+                          '${item.totalStock ?? 0} ${item.unit ?? "units"}'
+                        ),
+                        _buildDetailRow(
+                          Icons.notification_important, 
+                          'Low Stock Alert', 
+                          '${item.threshold ?? 0} ${item.unit ?? "units"}'
+                        ),
+                        
+                        const SizedBox(height: 28),
+                        
+                        // Metadata Section
+                        _buildSectionTitle('ADDITIONAL INFO'),
+                        _buildDetailRow(
+                          Icons.calendar_month, 
+                          'Purchase Date', 
+                          item.purchaseDate != null 
+                              ? DateFormat('MMMM dd, yyyy').format(item.purchaseDate!) 
+                              : 'N/A'
+                        ),
+                        _buildDetailRow(
+                          Icons.history, 
+                          'Created On', 
+                          item.createdAt != null 
+                              ? DateFormat('MMM dd, yyyy HH:mm').format(item.createdAt!) 
+                              : 'N/A'
+                        ),
+                        _buildDetailRow(
+                          Icons.update, 
+                          'Last Updated', 
+                          item.updatedAt != null 
+                              ? DateFormat('MMM dd, yyyy HH:mm').format(item.updatedAt!) 
+                              : 'N/A'
+                        ),
+                        
+                        if (item.locations.length > 1) ...[
+                          const SizedBox(height: 28),
+                          _buildSectionTitle('OTHER LOCATIONS'),
+                          ...item.locations
+                            .where((loc) => loc.locationId != widget.location.id)
+                            .map((loc) => Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              child: Row(
+                                children: [
+                                  const Icon(Icons.circle, size: 8, color: Colors.blue),
+                                  const SizedBox(width: 8),
+                                  Text(loc.name, style: const TextStyle(fontWeight: FontWeight.w500)),
+                                  const Spacer(),
+                                  Text('${loc.quantity} ${item.unit ?? "units"}'),
+                                ],
+                              ),
+                            )).toList(),
+                        ],
+                        
+                        const SizedBox(height: 40),
+                        
+                        // Action buttons
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Close'),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                      ],
                     ),
-                  ),
-                ],
+                  );
+                },
               ),
             );
           },
