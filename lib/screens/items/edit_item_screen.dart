@@ -84,6 +84,27 @@ class _EditItemScreenState extends State<EditItemScreen> {
   Future<void> _updateItem() async {
     if (_formKey.currentState!.validate()) {
       final itemsProvider = context.read<ItemsProvider>();
+      
+      final newBarcode = _barcodeController.text.trim();
+      
+      // If barcode changed, use assignBarcode first
+      if (newBarcode != (widget.item.barcode ?? '')) {
+        final barcodeSuccess = await itemsProvider.assignBarcode(
+          itemId: widget.item.id,
+          barcode: newBarcode,
+          overwrite: true,
+        );
+        
+        if (!barcodeSuccess && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to update barcode: ${itemsProvider.errorMessage}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+      }
 
       final success = await itemsProvider.updateItem(
         id: widget.item.id,
@@ -162,7 +183,6 @@ class _EditItemScreenState extends State<EditItemScreen> {
                     labelText: 'Barcode',
                     border: OutlineInputBorder(),
                   ),
-                  readOnly: true, // Barcode should be managed separately
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
