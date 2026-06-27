@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+
+import '../core/app_exception.dart';
 import '../services/stock_service.dart';
 
 class StockProvider with ChangeNotifier {
@@ -14,21 +16,24 @@ class StockProvider with ChangeNotifier {
   String get error => _error;
   List<dynamic> get locationStock => _locationStock;
 
-  // Get stock by location
   Future<void> getStockByLocation(String locationId) async {
-    _isLoading = true;
-    _error = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       _locationStock = await _stockService.getStockByLocation(locationId);
-      _isLoading = false;
-      notifyListeners();
+      _setLoading(false);
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'Failed to load stock data. Please try again.';
+      _setLoading(false);
     }
+  }
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    if (loading) _error = '';
+    notifyListeners();
   }
 
   void clearError() {

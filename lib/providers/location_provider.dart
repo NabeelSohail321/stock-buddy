@@ -1,31 +1,31 @@
 import 'package:flutter/foundation.dart';
-import 'package:stock_buddy/models/location_model.dart';
-import 'package:stock_buddy/services/location_service.dart';
+
+import '../core/app_exception.dart';
+import '../models/location_model.dart';
+import '../services/location_service.dart';
 
 class LocationProvider with ChangeNotifier {
   final LocationService _locationService;
 
+  LocationProvider(this._locationService);
+
   List<Location> _locations = [];
   bool _isLoading = false;
-  String? _error;
-
-  LocationProvider(this._locationService);
+  String _error = '';
 
   List<Location> get locations => _locations;
   bool get isLoading => _isLoading;
-  String? get error => _error;
+  String get error => _error;
 
-  // Load all locations
   Future<void> loadLocations() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
+    _setLoading(true);
     try {
       _locations = await _locationService.getLocations();
-      _error = null;
-    } catch (e) {
-      _error = e.toString();
+    } on AppException catch (e) {
+      _error = e.message;
+      _locations = [];
+    } catch (_) {
+      _error = 'Failed to load locations. Please try again.';
       _locations = [];
     } finally {
       _isLoading = false;
@@ -33,72 +33,73 @@ class LocationProvider with ChangeNotifier {
     }
   }
 
-  // Create new location
   Future<bool> createLocation({
     required String name,
     String? address,
   }) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
+    _setLoading(true);
     try {
-      final newLocation = await _locationService.createLocation(
-        name: name,
-        address: address,
-      );
-
-      // Add new location to the list and reload
-      await loadLocations();
+      final newLocation =
+          await _locationService.createLocation(name: name, address: address);
+      _locations.add(newLocation);
+      _setLoading(false);
       return true;
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
+    } catch (_) {
+      _error = 'Failed to create location. Please try again.';
+      _setLoading(false);
       return false;
     }
   }
 
-  // Update location
   Future<bool> updateLocation({
     required String id,
     required String name,
     required String address,
     required bool isActive,
   }) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
+    _setLoading(true);
     try {
-      await _locationService.updateLocation(
+      final updated = await _locationService.updateLocation(
         id: id,
         name: name,
         address: address,
         isActive: isActive,
       );
-
-      // Reload locations after update
-      await loadLocations();
+      final idx = _locations.indexWhere((l) => l.id == id);
+      if (idx != -1) _locations[idx] = updated;
+      _setLoading(false);
       return true;
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
+    } catch (_) {
+      _error = 'Failed to update location. Please try again.';
+      _setLoading(false);
       return false;
     }
   }
 
-  // Clear error
-  void clearError() {
-    _error = null;
+  Location? getLocationById(String id) {
+    try {
+      return _locations.firstWhere((l) => l.id == id);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    if (loading) _error = '';
     notifyListeners();
   }
 
-  // Find location by ID
-  Location? getLocationById(String id) {
-    try {
-      return _locations.firstWhere((location) => location.id == id);
-    } catch (e) {
-      return null;
-    }
+  void clearError() {
+    _error = '';
+    notifyListeners();
   }
 }

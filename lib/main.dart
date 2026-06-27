@@ -16,6 +16,7 @@ import 'package:stock_buddy/providers/stock_provider.dart';
 import 'package:stock_buddy/providers/stock_transfer_provider.dart';
 import 'package:stock_buddy/providers/transaction_provider.dart';
 import 'package:stock_buddy/providers/transfer_provider.dart';
+import 'package:stock_buddy/providers/manager_provider.dart';
 import 'package:stock_buddy/providers/user_provider.dart';
 import 'package:stock_buddy/screens/auth/login_screen.dart';
 import 'package:stock_buddy/screens/home_screen.dart';
@@ -30,6 +31,7 @@ import 'package:stock_buddy/services/stock_service.dart';
 import 'package:stock_buddy/services/stock_transfer_service.dart';
 import 'package:stock_buddy/services/transaction_service.dart';
 import 'package:stock_buddy/services/transfer_service.dart';
+import 'package:stock_buddy/services/manager_service.dart';
 import 'package:stock_buddy/services/user_service.dart';
 
 import 'SplashScreen.dart';
@@ -149,6 +151,15 @@ class MyApp extends StatelessWidget {
               token: authProvider.token ?? '',
             );
             return LocationProvider(locationService);
+          },
+        ),
+        ChangeNotifierProvider<ManagerProvider>(
+          create: (context) {
+            final authProvider = context.read<AuthProvider>();
+            final managerService = ManagerService(
+              token: authProvider.token ?? '',
+            );
+            return ManagerProvider(managerService);
           },
         ),
       ],

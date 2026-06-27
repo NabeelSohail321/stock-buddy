@@ -19,6 +19,7 @@ import 'disposal/disposal_request_screen.dart';
 import 'disposal/pending_disposals_screen.dart';
 import 'items/create_item_screen.dart';
 import 'items/item_management_screen.dart';
+import 'managers/manager_list_screen.dart';
 import 'users/user_management_screen.dart';
 import 'location/location_list_screen.dart';
 
@@ -93,7 +94,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool get _isAdmin {
-    return _currentUser?.role == 'admin';
+    return _currentUser?.role == 'admin' || _currentUser?.role == 'super_admin';
+  }
+
+  bool get _isSuperAdmin {
+    return _currentUser?.role == 'super_admin';
   }
 
   bool get _isAudit {
@@ -489,8 +494,23 @@ class _HomeScreenState extends State<HomeScreen> {
         },
       ));
 
-      // Replace Admin Panel with User Management
       actions.insert(7, QuickActionCard(
+        icon: Icons.manage_accounts_rounded,
+        title: 'Manager Management',
+        subtitle: 'Manage site managers and email preferences',
+        color: Colors.teal.shade700,
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const ManagerListScreen(),
+            ),
+          );
+        },
+      ));
+
+      // Replace Admin Panel with User Management
+      actions.insert(8, QuickActionCard(
         icon: Icons.people_alt_rounded,
         title: 'User Management',
         subtitle: 'Manage users and system settings',

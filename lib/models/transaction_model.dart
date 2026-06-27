@@ -3,11 +3,7 @@ class ChecklistItem {
   final String label;
   final bool completed;
 
-  ChecklistItem({
-    this.id,
-    required this.label,
-    required this.completed,
-  });
+  ChecklistItem({this.id, required this.label, required this.completed});
 
   factory ChecklistItem.fromJson(Map<String, dynamic> json) {
     return ChecklistItem(
@@ -17,267 +13,247 @@ class ChecklistItem {
     );
   }
 
-  Map<String, dynamic> toJson() {
-    return {
-      if (id != null) 'id': id,
-      'label': label,
-      'completed': completed,
-    };
-  }
+  Map<String, dynamic> toJson() => {
+        if (id != null) 'id': id,
+        'label': label,
+        'completed': completed,
+      };
 }
 
 class Transaction {
   final String id;
   final String type;
   final String status;
+
+  // Item (populated)
+  final String? itemId; // raw ObjectId (for client-side filtering)
   final String itemName;
   final String? itemSku;
-  final int quantity;
-  final DateTime createdAt;
+  final String? itemModelNumber;
+  final String? itemSerialNumber; // item-level serial (from ITEM_POPULATE_SELECT)
+  final String? itemPurchaseDate; // item-level purchase date
+  final String? itemUnit;
 
-  // Existing fields (Used for Display Names)
+  // Locations (populated — name embedded)
   final String? fromLocation;
   final String? toLocation;
-
-  // IDs (For Provider Lookups)
   final String? fromLocationId;
   final String? toLocationId;
 
-  // Personnel IDs
-  final String? createdBy;
-  final String? approvedBy;
+  // Personnel (populated — name embedded)
+  final String? createdByName;
+  final String? createdByEmail;
+  final String? approvedByName;
+  final String? managerId; // raw ObjectId, not populated by backend
+
+  // Dates
+  final DateTime createdAt;
   final DateTime? approvedAt;
+  final DateTime? updatedAt;
 
   // Details
+  final int quantity;
   final String? note;
   final String? reason;
   final String? photo;
   final String? vendorName;
   final String? serialNumber;
   final List<ChecklistItem> repairReturnChecklist;
-  final DateTime? updatedAt;
 
   Transaction({
     required this.id,
     required this.type,
     required this.status,
+    this.itemId,
     required this.itemName,
     this.itemSku,
+    this.itemModelNumber,
+    this.itemSerialNumber,
+    this.itemPurchaseDate,
+    this.itemUnit,
     this.fromLocation,
     this.toLocation,
     this.fromLocationId,
     this.toLocationId,
+    this.createdByName,
+    this.createdByEmail,
+    this.approvedByName,
+    this.managerId,
     required this.quantity,
     required this.createdAt,
-    this.createdBy,
-    this.approvedBy,
     this.approvedAt,
+    this.updatedAt,
     this.note,
     this.reason,
     this.photo,
     this.vendorName,
     this.serialNumber,
     this.repairReturnChecklist = const [],
-    this.updatedAt,
   });
 
   factory Transaction.fromJson(Map<String, dynamic> json) {
     try {
-      // 1. Parse Item
+      // ── Item (populated) ────────────────────────────────────────────────────
       String itemName = 'Unknown Item';
+      String? parsedItemId;
       String? itemSku;
+      String? itemModelNumber;
+      String? itemSerialNumber;
+      String? itemPurchaseDate;
+      String? itemUnit;
 
-      if (json['itemId'] != null) {
-        if (json['itemId'] is Map) {
-          itemName = json['itemId']['name'] ?? 'Unknown Item';
-          itemSku = json['itemId']['sku'];
-        } else if (json['itemId'] is String) {
-          // If it's just an ID strings
-          itemName = 'Item ${json['itemId'].toString().substring(0, 5)}...';
-        }
-      } else if (json['item'] != null) {
-        if (json['item'] is Map) {
-          itemName = json['item']['name'] ?? 'Unknown Item';
-          itemSku = json['item']['sku'];
-        } else if (json['item'] is String) {
-          itemName = json['item'];
-        }
+      final rawItem = json['itemId'];
+      if (rawItem is Map) {
+        parsedItemId = rawItem['_id']?.toString();
+        itemName = rawItem['name']?.toString() ?? 'Unknown Item';
+        itemSku = rawItem['sku']?.toString();
+        itemModelNumber = rawItem['modelNumber']?.toString();
+        itemSerialNumber = rawItem['serialNumber']?.toString();
+        itemPurchaseDate = rawItem['purchaseDate']?.toString();
+        itemUnit = rawItem['unit']?.toString();
+      } else if (rawItem is String) {
+        parsedItemId = rawItem;
+        itemName = 'Item ${rawItem.length > 5 ? rawItem.substring(0, 5) : rawItem}...';
       }
 
-      // 2. Parse Locations (Extract both ID and Name)
+      // ── Locations (populated) ────────────────────────────────────────────────
       String? fromLocName;
       String? fromLocId;
-
-      if (json['fromLocationId'] != null) {
-        if (json['fromLocationId'] is Map) {
-          fromLocName = json['fromLocationId']['name'];
-          fromLocId = json['fromLocationId']['_id']; // MongoDB typically uses _id inside objects
-        } else if (json['fromLocationId'] is String) {
-          fromLocId = json['fromLocationId'];
-          // Name remains null here, UI can fetch it via Provider using ID later
-        }
+      final rawFrom = json['fromLocationId'];
+      if (rawFrom is Map) {
+        fromLocName = rawFrom['name']?.toString();
+        fromLocId = rawFrom['_id']?.toString();
+      } else if (rawFrom is String) {
+        fromLocId = rawFrom;
       }
 
       String? toLocName;
       String? toLocId;
-
-      if (json['toLocationId'] != null) {
-        if (json['toLocationId'] is Map) {
-          toLocName = json['toLocationId']['name'];
-          toLocId = json['toLocationId']['_id'];
-        } else if (json['toLocationId'] is String) {
-          toLocId = json['toLocationId'];
-        }
+      final rawTo = json['toLocationId'];
+      if (rawTo is Map) {
+        toLocName = rawTo['name']?.toString();
+        toLocId = rawTo['_id']?.toString();
+      } else if (rawTo is String) {
+        toLocId = rawTo;
       }
 
-      // 3. Parse Users (CreatedBy / ApprovedBy)
-      String? createdById;
-      if (json['createdBy'] != null) {
-        if (json['createdBy'] is Map) {
-          createdById = json['createdBy']['_id'];
-        } else if (json['createdBy'] is String) {
-          createdById = json['createdBy'];
-        }
+      // ── Personnel (populated) ────────────────────────────────────────────────
+      String? createdByName;
+      String? createdByEmail;
+      final rawCreatedBy = json['createdBy'];
+      if (rawCreatedBy is Map) {
+        createdByName = rawCreatedBy['name']?.toString();
+        createdByEmail = rawCreatedBy['email']?.toString();
       }
 
-      String? approvedById;
-      if (json['approvedBy'] != null) {
-        if (json['approvedBy'] is Map) {
-          approvedById = json['approvedBy']['_id'];
-        } else if (json['approvedBy'] is String) {
-          approvedById = json['approvedBy'];
-        }
+      String? approvedByName;
+      final rawApprovedBy = json['approvedBy'];
+      if (rawApprovedBy is Map) {
+        approvedByName = rawApprovedBy['name']?.toString();
       }
 
-      // 4. Parse Dates
-      DateTime createdAt;
+      // managerId is not populated — just a raw ObjectId string or null
+      final rawManagerId = json['managerId'];
+      final String? managerId =
+          rawManagerId is String ? rawManagerId : rawManagerId is Map ? rawManagerId['_id']?.toString() : null;
+
+      // ── Dates ────────────────────────────────────────────────────────────────
+      DateTime createdAt = DateTime.now();
       try {
-        if (json['createdAt'] != null) {
-          createdAt = DateTime.parse(json['createdAt']);
-        } else if (json['created_at'] != null) {
-          createdAt = DateTime.parse(json['created_at']);
-        } else {
-          createdAt = DateTime.now();
-        }
-      } catch (e) {
-        createdAt = DateTime.now();
-      }
+        if (json['createdAt'] != null) createdAt = DateTime.parse(json['createdAt']);
+      } catch (_) {}
 
       DateTime? approvedAt;
-      if (json['approvedAt'] != null) {
-        try {
-          approvedAt = DateTime.parse(json['approvedAt']);
-        } catch (_) {}
-      }
+      try {
+        if (json['approvedAt'] != null) approvedAt = DateTime.parse(json['approvedAt']);
+      } catch (_) {}
 
       DateTime? updatedAt;
-      if (json['updatedAt'] != null) {
-        try {
-          updatedAt = DateTime.parse(json['updatedAt']);
-        } catch (_) {}
-      }
+      try {
+        if (json['updatedAt'] != null) updatedAt = DateTime.parse(json['updatedAt']);
+      } catch (_) {}
 
-      // 5. Parse Checklist
-      List<ChecklistItem> repairReturnChecklist = [];
-      // Support both 'repairReturnChecklist' (new) and 'checklist' (old)
-      final checklistData = json['repairReturnChecklist'] ?? json['checklist'];
-      if (checklistData != null && checklistData is List) {
-        repairReturnChecklist = (checklistData as List)
-            .map((item) => ChecklistItem.fromJson(item))
-            .toList();
+      // ── Checklist ────────────────────────────────────────────────────────────
+      List<ChecklistItem> checklist = [];
+      final rawChecklist = json['repairReturnChecklist'] ?? json['checklist'];
+      if (rawChecklist is List) {
+        checklist = rawChecklist.map((e) => ChecklistItem.fromJson(e)).toList();
       }
 
       return Transaction(
-        id: json['_id'] ?? json['id'] ?? DateTime.now().millisecondsSinceEpoch.toString(),
-        type: json['type'] ?? 'UNKNOWN',
-        status: json['status'] ?? 'pending',
+        id: json['_id']?.toString() ?? json['id']?.toString() ?? '',
+        type: json['type']?.toString() ?? 'UNKNOWN',
+        status: json['status']?.toString() ?? 'approved',
+        itemId: parsedItemId,
         itemName: itemName,
         itemSku: itemSku,
+        itemModelNumber: itemModelNumber,
+        itemSerialNumber: itemSerialNumber,
+        itemPurchaseDate: itemPurchaseDate,
+        itemUnit: itemUnit,
+        fromLocation: fromLocName,
+        toLocation: toLocName,
+        fromLocationId: fromLocId,
+        toLocationId: toLocId,
+        createdByName: createdByName,
+        createdByEmail: createdByEmail,
+        approvedByName: approvedByName,
+        managerId: managerId,
         quantity: (json['quantity'] ?? 0).toInt(),
         createdAt: createdAt,
-        // Location mapping
-        fromLocation: fromLocName, // For legacy display
-        fromLocationId: fromLocId, // For new ID lookup
-        toLocation: toLocName,     // For legacy display
-        toLocationId: toLocId,     // For new ID lookup
-        // User mapping
-        createdBy: createdById,
-        approvedBy: approvedById,
         approvedAt: approvedAt,
-        // Details
-        note: json['note'],
-        reason: json['reason'],
-        photo: json['photo'],
-        vendorName: json['vendorName'],
-        serialNumber: json['serialNumber'],
-        repairReturnChecklist: repairReturnChecklist,
         updatedAt: updatedAt,
+        note: json['note']?.toString(),
+        reason: json['reason']?.toString(),
+        photo: json['photo']?.toString(),
+        vendorName: json['vendorName']?.toString(),
+        serialNumber: json['serialNumber']?.toString(),
+        repairReturnChecklist: checklist,
       );
     } catch (e) {
-      print('Error creating Transaction from JSON: $e');
       return Transaction(
         id: 'error-${DateTime.now().millisecondsSinceEpoch}',
         type: 'ERROR',
         status: 'error',
-        itemName: 'Error loading item',
+        itemName: 'Error loading transaction',
         quantity: 0,
         createdAt: DateTime.now(),
       );
     }
   }
 
-  // --- Existing Getters (Preserved for Backward Compatibility) ---
-
   String get displayType {
     switch (type.toUpperCase()) {
-      case 'ADD':
-        return 'Add Stock';
-      case 'TRANSFER':
-        return 'Transfer';
-      case 'REPAIR_OUT':
-        return 'Send to Repair';
-      case 'REPAIR_IN':
-        return 'Return from Repair';
-      case 'DISPOSE':
-        return 'Dispose';
-      case 'ERROR':
-        return 'Error';
-      default:
-        return type;
+      case 'ADD': return 'Add Stock';
+      case 'TRANSFER': return 'Transfer';
+      case 'REPAIR_OUT': return 'Send to Repair';
+      case 'REPAIR_IN': return 'Return from Repair';
+      case 'DISPOSE': return 'Dispose';
+      default: return type;
     }
   }
 
-  String get fromToDisplay {
-    // Falls back to "Unknown" if names weren't embedded in JSON,
-    // protecting old UI from crashing on nulls.
+  String get locationDisplay {
     switch (type.toUpperCase()) {
       case 'ADD':
-        return toLocation != null ? '→ $toLocation' : 'Stock Added';
+        return toLocation ?? fromLocation ?? '—';
       case 'TRANSFER':
-        if (fromLocation != null && toLocation != null) {
-          return '$fromLocation → $toLocation';
-        } else if (fromLocation != null) {
-          return '$fromLocation → Unknown';
-        } else if (toLocation != null) {
-          return 'Unknown → $toLocation';
-        } else {
-          return 'Transfer';
-        }
+        final from = fromLocation ?? '?';
+        final to = toLocation ?? '?';
+        return '$from → $to';
       case 'REPAIR_OUT':
-        return '${fromLocation ?? 'Unknown'} → Repair Center';
+        return '${fromLocation ?? '?'} → Repair';
       case 'REPAIR_IN':
-        return 'Repair Center → ${toLocation ?? 'Unknown'}';
+        return 'Repair → ${toLocation ?? '?'}';
       case 'DISPOSE':
-        return '${fromLocation ?? 'Unknown'} → Dispose';
+        return '${fromLocation ?? '?'} → Disposed';
       default:
-        return '${fromLocation ?? 'Unknown'} → ${toLocation ?? 'Unknown'}';
+        return fromLocation ?? toLocation ?? '—';
     }
   }
 
-  String get displayItem {
-    if (itemSku != null) {
-      return '$itemName ($itemSku)';
-    }
-    return itemName;
-  }
+  String get displayItem => itemSku != null ? '$itemName ($itemSku)' : itemName;
+
+  // Backward-compat alias used by home_screen
+  String get fromToDisplay => locationDisplay;
 }

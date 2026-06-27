@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../providers/items_provider.dart';
+import '../../providers/location_provider.dart';
+import '../../providers/manager_provider.dart';
 import 'barcode_scanner_screen.dart';
 
 class CreateItemScreen extends StatefulWidget {
@@ -19,6 +21,7 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   final _nameController = TextEditingController();
   final _barcodeController = TextEditingController();
   final _thresholdController = TextEditingController(text: '0');
+  final _initialQuantityController = TextEditingController(text: '0');
   final _modelNumberController = TextEditingController();
   final _serialNumberController = TextEditingController();
   final _purchaseDateController = TextEditingController(
@@ -26,12 +29,13 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   );
 
   String _selectedUnit = 'pcs';
-  final List<String> _selectedLocations = [];
+  String? _selectedLocationId;
+  String? _selectedManagerId;
   bool _autoGenerateBarcode = false;
   File? _selectedImage;
   String? _base64Image;
 
-  // Available units and locations
+  // Available units
   final List<String> _units = [
     'pcs',
     'kg',
@@ -49,23 +53,23 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
     'can',
   ];
 
-  final List<String> _availableLocations = [
-    'Warehouse',
-    'Store A',
-    'Store B',
-    'Store C',
-    'Storage Room',
-    'Main Floor',
-    'Backroom',
-  ];
-
   final ImagePicker _imagePicker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<LocationProvider>().loadLocations();
+      context.read<ManagerProvider>().fetchManagers();
+    });
+  }
 
   @override
   void dispose() {
     _nameController.dispose();
     _barcodeController.dispose();
     _thresholdController.dispose();
+    _initialQuantityController.dispose();
     _modelNumberController.dispose();
     _serialNumberController.dispose();
     _purchaseDateController.dispose();
@@ -74,16 +78,6 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
 
   Future<void> _createItem() async {
     if (_formKey.currentState!.validate()) {
-      if (_selectedLocations.isEmpty) {
-        // ScaffoldMessenger.of(context).showSnackBar(
-        //   const SnackBar(
-        //     content: Text('Please select at least one location'),
-        //     backgroundColor: Colors.red,
-        //   ),
-        // );
-        // return;
-      }
-
       final itemsProvider = context.read<ItemsProvider>();
 
       // Generate barcode if auto-generate is enabled and no barcode is entered
@@ -97,7 +91,9 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
         barcode: barcode,
         unit: _selectedUnit,
         threshold: int.tryParse(_thresholdController.text) ?? 0,
-        locations: _selectedLocations,
+        locationId: _selectedLocationId,
+        managerId: _selectedManagerId,
+        initialQuantity: int.tryParse(_initialQuantityController.text) ?? 0,
         image: _base64Image,
         modelNumber: _modelNumberController.text.trim(),
         serialNumber: _serialNumberController.text.trim(),
@@ -120,8 +116,10 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
         _formKey.currentState!.reset();
         setState(() {
           _selectedUnit = 'pcs';
-          _selectedLocations.clear();
+          _selectedLocationId = null;
+          _selectedManagerId = null;
           _thresholdController.text = '0';
+          _initialQuantityController.text = '0';
           _autoGenerateBarcode = false;
           _barcodeController.clear();
           _modelNumberController.clear();
@@ -132,16 +130,6 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
         });
       }
     }
-  }
-
-  void _toggleLocation(String location) {
-    setState(() {
-      if (_selectedLocations.contains(location)) {
-        _selectedLocations.remove(location);
-      } else {
-        _selectedLocations.add(location);
-      }
-    });
   }
 
   void _generateBarcodeNow() {
@@ -319,6 +307,8 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
   @override
   Widget build(BuildContext context) {
     final itemsProvider = context.watch<ItemsProvider>();
+    final locationProvider = context.watch<LocationProvider>();
+    final managerProvider = context.watch<ManagerProvider>();
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width >= 768;
     final isMobile = size.width < 768;
@@ -893,6 +883,100 @@ class _CreateItemScreenState extends State<CreateItemScreen> {
                             ),
                           ],
                         ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Location, Manager & Initial Stock Card
+              Card(
+                elevation: 2,
+                shadowColor: Colors.black12,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Location & Initial Stock',
+                          style: TextStyle(
+                            fontSize: isDesktop ? 20 : 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey[800],
+                          )),
+                      const SizedBox(height: 16),
+
+                      // Location dropdown (single selection)
+                      DropdownButtonFormField<String>(
+                        value: _selectedLocationId,
+                        decoration: InputDecoration(
+                          labelText: 'Assign Location (Optional)',
+                          prefixIcon: const Icon(Icons.location_on_outlined),
+                          hintText: 'Select a location',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(value: null, child: Text('No location assigned')),
+                          ...locationProvider.locations.map((loc) => DropdownMenuItem<String>(
+                                value: loc.id,
+                                child: Text(loc.name),
+                              )),
+                        ],
+                        onChanged: (v) {
+                          setState(() {
+                            _selectedLocationId = v;
+                            _selectedManagerId = null;
+                          });
+                          if (v != null) {
+                            context.read<ManagerProvider>().fetchManagersByLocation(v);
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Manager dropdown — filtered by selected location if one is chosen
+                      DropdownButtonFormField<String>(
+                        value: _selectedManagerId,
+                        decoration: InputDecoration(
+                          labelText: 'Assign Manager (Optional)',
+                          prefixIcon: const Icon(Icons.manage_accounts_outlined),
+                          hintText: 'Select a manager',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        items: [
+                          const DropdownMenuItem<String>(value: null, child: Text('No manager assigned')),
+                          ...(_selectedLocationId != null
+                                  ? managerProvider.locationManagers
+                                  : managerProvider.managers)
+                              .where((m) => m.isActive)
+                              .map((m) => DropdownMenuItem<String>(
+                                    value: m.id,
+                                    child: Text(m.name),
+                                  )),
+                        ],
+                        onChanged: (v) => setState(() => _selectedManagerId = v),
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Initial Quantity
+                      TextFormField(
+                        controller: _initialQuantityController,
+                        decoration: InputDecoration(
+                          labelText: 'Initial Quantity',
+                          prefixIcon: const Icon(Icons.inventory_outlined),
+                          hintText: '0',
+                          helperText: 'Starting stock at the selected location (default: 0)',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        keyboardType: TextInputType.number,
+                        enabled: _selectedLocationId != null,
+                        validator: (value) {
+                          final qty = int.tryParse(value ?? '');
+                          if (qty == null || qty < 0) return 'Enter a valid quantity (0 or more)';
+                          return null;
+                        },
+                      ),
                     ],
                   ),
                 ),

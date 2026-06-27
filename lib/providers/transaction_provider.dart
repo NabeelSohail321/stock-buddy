@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
+
+import '../core/app_exception.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -47,18 +49,18 @@ class TransactionProvider with ChangeNotifier {
   String? get endDate => _endDate;
 
   Future<void> loadRecentTransactions() async {
+    _setLoading(true);
+    _errorMessage = '';
     try {
-      _setLoading(true);
-      _errorMessage = '';
-
       final response = await _transactionService.getRecentTransactions(limit: 10);
-
       _recentTransactions = response['transactions'];
       notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to load recent transactions: $e';
+    } on AppException catch (e) {
+      _errorMessage = e.message;
       notifyListeners();
-      print('Error in loadRecentTransactions: $e');
+    } catch (e) {
+      _errorMessage = 'Failed to load recent transactions. Please try again.';
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -89,6 +91,11 @@ class TransactionProvider with ChangeNotifier {
         _search = search;
         _startDate = startDate;
         _endDate = endDate;
+      } else {
+        // Set loading for load-more so the guard in loadMoreTransactions
+        // blocks duplicate calls during the in-flight request.
+        _isLoading = true;
+        notifyListeners();
       }
 
       _errorMessage = '';
@@ -116,10 +123,12 @@ class TransactionProvider with ChangeNotifier {
 
       _hasMore = _currentPage < _totalPages;
       notifyListeners();
-    } catch (e) {
-      _errorMessage = 'Failed to load transactions: $e';
+    } on AppException catch (e) {
+      _errorMessage = e.message;
       notifyListeners();
-      print('Error in loadAllTransactions: $e');
+    } catch (e) {
+      _errorMessage = 'Failed to load transactions. Please try again.';
+      notifyListeners();
     } finally {
       _setLoading(false);
     }
@@ -129,16 +138,21 @@ class TransactionProvider with ChangeNotifier {
     if (_isLoading || !_hasMore) return;
 
     _currentPage++;
-    await loadAllTransactions(
-      category: _category,
-      type: _type,
-      status: _status,
-      datePreset: _datePreset,
-      search: _search,
-      startDate: _startDate,
-      endDate: _endDate,
-      loadMore: true,
-    );
+    try {
+      await loadAllTransactions(
+        category: _category,
+        type: _type,
+        status: _status,
+        datePreset: _datePreset,
+        search: _search,
+        startDate: _startDate,
+        endDate: _endDate,
+        loadMore: true,
+      );
+    } catch (_) {
+      // Roll back page so the user can retry.
+      _currentPage--;
+    }
   }
 
   Future<void> exportTransactionsToPdf() async {
@@ -177,8 +191,11 @@ class TransactionProvider with ChangeNotifier {
         bytes: pdfBytes,
         filename: fileName,
       );
+    } on AppException catch (e) {
+      _errorMessage = e.message;
+      notifyListeners();
     } catch (e) {
-      _errorMessage = 'Failed to export PDF: $e';
+      _errorMessage = 'Failed to export PDF. Please try again.';
       notifyListeners();
     } finally {
       _setLoading(false);
@@ -197,7 +214,7 @@ class TransactionProvider with ChangeNotifier {
           pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
             children: [
-              pw.Text('Stock Buddy',
+              pw.Text('Inventory Hub',
                   style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.indigo)),
               pw.Text('Transaction Report', style: const pw.TextStyle(fontSize: 14, color: PdfColors.grey700)),
             ],
@@ -247,7 +264,7 @@ class TransactionProvider with ChangeNotifier {
                     borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
                   ),
                   child: pw.Text(_sanitize(tx.displayType),
-                      style: const pw.TextStyle(fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
+                      style: pw.TextStyle(fontSize: 8, color: PdfColors.white, fontWeight: pw.FontWeight.bold)),
                 ),
               ),
               _tableCell(_sanitize(tx.itemName)),
@@ -317,7 +334,7 @@ class TransactionProvider with ChangeNotifier {
     return pw.Container(
       margin: const pw.EdgeInsets.only(top: 20),
       alignment: pw.Alignment.center,
-      child: pw.Text('© ${DateTime.now().year} Stock Buddy Inventory Management System',
+      child: pw.Text('© ${DateTime.now().year} Inventory Hub - Inventory Management System',
           style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey)),
     );
   }
@@ -338,8 +355,12 @@ class TransactionProvider with ChangeNotifier {
       }
       
       return success;
+    } on AppException catch (e) {
+      _errorMessage = e.message;
+      notifyListeners();
+      return false;
     } catch (e) {
-      _errorMessage = 'Failed to update checklist: $e';
+      _errorMessage = 'Failed to update checklist. Please try again.';
       notifyListeners();
       return false;
     } finally {

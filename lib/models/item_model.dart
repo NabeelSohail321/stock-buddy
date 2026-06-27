@@ -32,11 +32,12 @@ class Item {
   final int? totalStock;
   final String? stockStatus;
   final String? status;
-  final String? image; // New field for image URL or base64
+  final String? image;
   final String? modelNumber;
   final String? serialNumber;
   final DateTime? purchaseDate;
   final List<ItemLocation> locations;
+  final String? assignedManagerId;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 
@@ -50,16 +51,26 @@ class Item {
     this.totalStock,
     this.stockStatus,
     this.status,
-    this.image, // New optional parameter
+    this.image,
     this.modelNumber,
     this.serialNumber,
     this.purchaseDate,
     required this.locations,
+    this.assignedManagerId,
     this.createdAt,
     this.updatedAt,
   });
 
   factory Item.fromJson(Map<String, dynamic> json) {
+    // assignedManagerId is the backend field name (stored as ObjectId, returned
+    // as plain string or populated object { _id, name, email }).
+    final rawManager = json['assignedManagerId'];
+    final String? parsedManagerId = rawManager is String
+        ? rawManager
+        : rawManager is Map
+            ? rawManager['_id']?.toString()
+            : null;
+
     return Item(
       id: json['_id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Unknown Item',
@@ -70,15 +81,16 @@ class Item {
       totalStock: json['totalStock'] is int ? json['totalStock'] : int.tryParse(json['totalStock']?.toString() ?? '0'),
       stockStatus: json['stockStatus']?.toString(),
       status: json['status']?.toString(),
-      image: json['image']?.toString(), // Parse the new image field
+      image: json['image']?.toString(),
       modelNumber: (json['modelNumber'] ?? json['model_number'])?.toString(),
       serialNumber: (json['serialNumber'] ?? json['serial_number'])?.toString(),
-      purchaseDate: (json['purchaseDate'] ?? json['purchase_date']) != null 
-          ? DateTime.tryParse((json['purchaseDate'] ?? json['purchase_date']).toString()) 
+      purchaseDate: (json['purchaseDate'] ?? json['purchase_date']) != null
+          ? DateTime.tryParse((json['purchaseDate'] ?? json['purchase_date']).toString())
           : null,
       locations: json['locations'] is List
           ? (json['locations'] as List).map((loc) => ItemLocation.fromJson(loc)).toList()
           : [],
+      assignedManagerId: parsedManagerId,
       createdAt: json['createdAt'] != null ? DateTime.tryParse(json['createdAt'].toString()) : null,
       updatedAt: json['updatedAt'] != null ? DateTime.tryParse(json['updatedAt'].toString()) : null,
     );

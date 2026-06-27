@@ -2,6 +2,7 @@ class StockAddRequest {
   final String itemId;
   final String locationId;
   final int quantity;
+  final String? managerId;
   final String? note;
   final String? photo;
 
@@ -9,6 +10,7 @@ class StockAddRequest {
     required this.itemId,
     required this.locationId,
     required this.quantity,
+    this.managerId,
     this.note,
     this.photo,
   });
@@ -18,8 +20,9 @@ class StockAddRequest {
       'itemId': itemId,
       'locationId': locationId,
       'quantity': quantity,
-      'note': note,
-      'photo': photo,
+      if (managerId != null) 'managerId': managerId,
+      if (note != null) 'note': note,
+      if (photo != null) 'photo': photo,
     };
   }
 }

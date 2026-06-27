@@ -438,7 +438,7 @@ class _SendToRepairScreenState extends State<SendToRepairScreen> {
                         _buildQuantityField(),
                         const SizedBox(height: 20),
 
-                        // Serial Number (Now Mandatory)
+                        // Serial Number (Optional)
                         _buildSerialNumberField(),
                         const SizedBox(height: 20),
 
@@ -1010,17 +1010,11 @@ class _SendToRepairScreenState extends State<SendToRepairScreen> {
     return TextFormField(
       controller: _serialNumberController,
       decoration: const InputDecoration(
-        labelText: 'Serial Number *',
+        labelText: 'Serial Number (Optional)',
         border: OutlineInputBorder(),
-        hintText: 'Enter item serial number',
+        hintText: 'Enter item serial number if available',
         prefixIcon: Icon(Icons.confirmation_number),
       ),
-      validator: (value) {
-        if (value == null || value.trim().isEmpty) {
-          return 'Please enter serial number';
-        }
-        return null;
-      },
     );
   }
 

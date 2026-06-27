@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../models/item_model.dart';
-import '../../models/location_model.dart';
 import '../../models/stock_model.dart';
 import '../../providers/items_provider.dart';
+import '../../providers/manager_provider.dart';
 import '../../services/image_service.dart';
 import '../items/barcode_scanner_screen.dart';
 
@@ -23,6 +22,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
 
   String? _selectedItemId;
   String? _selectedLocationId;
+  String? _selectedManagerId;
   String? _selectedImageBase64;
   final ImageService _imageService = ImageService();
 
@@ -66,6 +66,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
         itemId: _selectedItemId!,
         locationId: _selectedLocationId!,
         quantity: quantity,
+        managerId: _selectedManagerId,
         note: _noteController.text.trim().isEmpty ? null : _noteController.text.trim(),
         photo: _selectedImageBase64,
       );
@@ -90,6 +91,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
     setState(() {
       _selectedItemId = null;
       _selectedLocationId = null;
+      _selectedManagerId = null;
       _selectedImageBase64 = null;
       _barcodeController.clear();
       _barcodeSearchError = null;
@@ -211,6 +213,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
   @override
   Widget build(BuildContext context) {
     final itemsProvider = context.watch<ItemsProvider>();
+    final managerProvider = context.watch<ManagerProvider>();
     final size = MediaQuery.of(context).size;
     final isDesktop = size.width >= 768;
 
@@ -291,7 +294,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
                   key: _formKey,
                   child: Column(
                     children: [
-                      _buildFormCard(itemsProvider, isDesktop),
+                      _buildFormCard(itemsProvider, managerProvider, isDesktop),
                       const SizedBox(height: 24),
                       // _buildImageCard(isDesktop),
                       const SizedBox(height: 32),
@@ -308,7 +311,7 @@ class _AddStockScreenState extends State<AddStockScreen> {
     );
   }
 
-  Widget _buildFormCard(ItemsProvider itemsProvider, bool isDesktop) {
+  Widget _buildFormCard(ItemsProvider itemsProvider, ManagerProvider managerProvider, bool isDesktop) {
     return Card(
       elevation: 2,
       shadowColor: Colors.black12,
@@ -337,6 +340,12 @@ class _AddStockScreenState extends State<AddStockScreen> {
             // Location Selection
             _buildLocationDropdown(itemsProvider),
             const SizedBox(height: 16),
+
+            // Manager selection — filtered to managers at the selected location
+            if (_selectedLocationId != null)
+              _buildManagerDropdown(managerProvider),
+            if (_selectedLocationId != null)
+              const SizedBox(height: 16),
 
             // Quantity
             TextFormField(
@@ -597,7 +606,6 @@ class _AddStockScreenState extends State<AddStockScreen> {
   Widget _buildItemDropdown(ItemsProvider itemsProvider) {
     final items = itemsProvider.items;
 
-    // Ensure we have a valid value
     final validValue = items.any((item) => item.id == _selectedItemId)
         ? _selectedItemId
         : null;
@@ -646,7 +654,6 @@ class _AddStockScreenState extends State<AddStockScreen> {
         onChanged: (value) {
           setState(() {
             _selectedItemId = value;
-            // Clear barcode search when selecting from dropdown
             _barcodeController.clear();
             _barcodeSearchError = null;
           });
@@ -831,7 +838,11 @@ class _AddStockScreenState extends State<AddStockScreen> {
         onChanged: (value) {
           setState(() {
             _selectedLocationId = value;
+            _selectedManagerId = null;
           });
+          if (value != null) {
+            context.read<ManagerProvider>().fetchManagersByLocation(value);
+          }
         },
         validator: (value) {
           if (value == null) {
@@ -840,6 +851,32 @@ class _AddStockScreenState extends State<AddStockScreen> {
           return null;
         },
       ),
+    );
+  }
+
+  Widget _buildManagerDropdown(ManagerProvider managerProvider) {
+    final managers = managerProvider.locationManagers.where((m) => m.isActive).toList();
+    final validValue = managers.any((m) => m.id == _selectedManagerId) ? _selectedManagerId : null;
+
+    return DropdownButtonFormField<String>(
+      value: validValue,
+      decoration: InputDecoration(
+        labelText: 'Assign Manager (Optional)',
+        prefixIcon: const Icon(Icons.manage_accounts_outlined),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      ),
+      items: [
+        const DropdownMenuItem<String>(
+          value: null,
+          child: Text('No manager', style: TextStyle(color: Colors.grey)),
+        ),
+        ...managers.map((m) => DropdownMenuItem<String>(
+              value: m.id,
+              child: Text(m.name),
+            )),
+      ],
+      onChanged: (value) => setState(() => _selectedManagerId = value),
     );
   }
 

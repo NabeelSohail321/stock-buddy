@@ -3,6 +3,7 @@ class StockTransferRequest {
   final String fromLocationId;
   final String toLocationId;
   final int quantity;
+  final String? managerId;
   final String? note;
 
   StockTransferRequest({
@@ -10,6 +11,7 @@ class StockTransferRequest {
     required this.fromLocationId,
     required this.toLocationId,
     required this.quantity,
+    this.managerId,
     this.note,
   });
 
@@ -19,6 +21,7 @@ class StockTransferRequest {
       'fromLocationId': fromLocationId,
       'toLocationId': toLocationId,
       'quantity': quantity,
+      if (managerId != null) 'managerId': managerId,
       if (note != null && note!.isNotEmpty) 'note': note,
     };
   }

@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+
+import '../core/app_exception.dart';
 import '../services/disposal_service.dart';
 
 class DisposalProvider with ChangeNotifier {
@@ -16,7 +18,6 @@ class DisposalProvider with ChangeNotifier {
   String get successMessage => _successMessage;
   List<dynamic> get pendingDisposals => _pendingDisposals;
 
-  // Existing requestDisposal method...
   Future<bool> requestDisposal({
     required String itemId,
     required String locationId,
@@ -25,11 +26,7 @@ class DisposalProvider with ChangeNotifier {
     String? note,
     required String photo,
   }) async {
-    _isLoading = true;
-    _error = '';
-    _successMessage = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       await _disposalService.requestDisposal(
         itemId: itemId,
@@ -39,69 +36,65 @@ class DisposalProvider with ChangeNotifier {
         note: note,
         photo: photo,
       );
-
       _successMessage = 'Disposal request submitted successfully! Waiting for admin approval.';
-      _isLoading = false;
-      notifyListeners();
+      _setLoading(false);
       return true;
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'An unexpected error occurred. Please try again.';
+      _setLoading(false);
       return false;
     }
   }
 
-  // New method to fetch pending disposals
   Future<void> fetchPendingDisposals() async {
-    _isLoading = true;
-    _error = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       _pendingDisposals = await _disposalService.getPendingDisposals();
-      print(pendingDisposals);
-      _isLoading = false;
-      notifyListeners();
+      _setLoading(false);
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'Failed to load disposals. Please try again.';
+      _setLoading(false);
     }
   }
 
-  // New method to approve/reject disposal
   Future<bool> approveDisposal({
     required String transactionId,
     required bool approved,
   }) async {
-    _isLoading = true;
-    _error = '';
-    _successMessage = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       await _disposalService.approveDisposal(
         transactionId: transactionId,
         approved: approved,
       );
-
       _successMessage = approved
           ? 'Disposal request approved successfully!'
           : 'Disposal request rejected successfully!';
-
-      // Remove the processed disposal from the list
-      _pendingDisposals.removeWhere((disposal) => disposal['_id'] == transactionId);
-
-      _isLoading = false;
-      notifyListeners();
+      _pendingDisposals.removeWhere((d) => d['_id'] == transactionId);
+      _setLoading(false);
       return true;
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'An unexpected error occurred. Please try again.';
+      _setLoading(false);
       return false;
     }
+  }
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    if (loading) _error = '';
+    notifyListeners();
   }
 
   void clearError() {

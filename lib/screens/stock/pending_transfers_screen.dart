@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+
 import '../../providers/transfer_provider.dart';
 import 'transfer_review_screen.dart';
 
 class PendingTransfersScreen extends StatefulWidget {
-  const PendingTransfersScreen({Key? key}) : super(key: key);
+  const PendingTransfersScreen({super.key});
 
   @override
   State<PendingTransfersScreen> createState() => _PendingTransfersScreenState();
@@ -15,84 +17,73 @@ class _PendingTransfersScreenState extends State<PendingTransfersScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<TransferProvider>(context, listen: false).fetchPendingTransfers();
+      context.read<TransferProvider>().fetchPendingTransfers();
     });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
         title: const Text('Pending Transfers'),
-        backgroundColor: Colors.blue,
+        backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () {
-              Provider.of<TransferProvider>(context, listen: false).fetchPendingTransfers();
-            },
+            onPressed: () => context.read<TransferProvider>().fetchPendingTransfers(),
           ),
         ],
       ),
       body: Consumer<TransferProvider>(
-        builder: (context, transferProvider, child) {
-          if (transferProvider.isLoading && transferProvider.pendingTransfers.isEmpty) {
+        builder: (context, prov, _) {
+          if (prov.isLoading && prov.pendingTransfers.isEmpty) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          if (transferProvider.error.isNotEmpty) {
+          if (prov.error.isNotEmpty) {
             return Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    'Error: ${transferProvider.error}',
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 20),
-                  ElevatedButton(
-                    onPressed: () {
-                      transferProvider.fetchPendingTransfers();
-                    },
-                    child: const Text('Retry'),
+                  Icon(Icons.error_outline, size: 56, color: Colors.red.shade300),
+                  const SizedBox(height: 12),
+                  Text(prov.error, textAlign: TextAlign.center, style: const TextStyle(color: Colors.red)),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () => prov.fetchPendingTransfers(),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
                   ),
                 ],
               ),
             );
           }
 
-          if (transferProvider.pendingTransfers.isEmpty) {
+          if (prov.pendingTransfers.isEmpty) {
             return const Center(
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.inventory_2_outlined, size: 64, color: Colors.grey),
+                  Icon(Icons.compare_arrows, size: 72, color: Colors.grey),
                   SizedBox(height: 16),
-                  Text(
-                    'No pending transfers',
-                    style: TextStyle(fontSize: 18, color: Colors.grey),
-                  ),
+                  Text('No pending transfers', style: TextStyle(fontSize: 18, color: Colors.grey)),
                   SizedBox(height: 8),
-                  Text(
-                    'All transfer requests have been reviewed',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                    textAlign: TextAlign.center,
-                  ),
+                  Text('All transfer requests have been reviewed',
+                      style: TextStyle(fontSize: 14, color: Colors.grey), textAlign: TextAlign.center),
                 ],
               ),
             );
           }
 
           return RefreshIndicator(
-            onRefresh: () => transferProvider.fetchPendingTransfers(),
+            onRefresh: () => prov.fetchPendingTransfers(),
             child: ListView.builder(
-              itemCount: transferProvider.pendingTransfers.length,
-              itemBuilder: (context, index) {
-                final transfer = transferProvider.pendingTransfers[index];
-                return TransferCard(transfer: transfer);
-              },
+              padding: const EdgeInsets.all(12),
+              itemCount: prov.pendingTransfers.length,
+              itemBuilder: (context, index) =>
+                  _TransferCard(transfer: prov.pendingTransfers[index]),
             ),
           );
         },
@@ -101,69 +92,126 @@ class _PendingTransfersScreenState extends State<PendingTransfersScreen> {
   }
 }
 
-class TransferCard extends StatelessWidget {
+class _TransferCard extends StatelessWidget {
   final Map<String, dynamic> transfer;
 
-  const TransferCard({Key? key, required this.transfer}) : super(key: key);
+  const _TransferCard({required this.transfer});
 
   @override
   Widget build(BuildContext context) {
     final fromLocation = transfer['fromLocationId'] is Map
         ? transfer['fromLocationId']['name'] ?? 'N/A'
         : 'N/A';
-
     final toLocation = transfer['toLocationId'] is Map
         ? transfer['toLocationId']['name'] ?? 'N/A'
         : 'N/A';
-
-    final itemName = transfer['itemId'] is Map
-        ? transfer['itemId']['name'] ?? 'N/A'
-        : 'N/A';
-
+    final itemData = transfer['itemId'] is Map ? transfer['itemId'] as Map : {};
+    final itemName = itemData['name']?.toString() ?? 'Unknown Item';
+    final itemSku = itemData['sku']?.toString();
     final quantity = transfer['quantity']?.toString() ?? '0';
     final createdBy = transfer['createdBy'] is Map
-        ? transfer['createdBy']['name'] ?? 'N/A'
+        ? transfer['createdBy']['name']?.toString() ?? 'N/A'
         : 'N/A';
+    final note = transfer['note']?.toString();
+
+    DateTime? createdAt;
+    try {
+      if (transfer['createdAt'] != null) createdAt = DateTime.parse(transfer['createdAt'].toString());
+    } catch (_) {}
 
     return Card(
-      margin: const EdgeInsets.all(8.0),
-      elevation: 2.0,
-      child: ListTile(
-        title: Text(
-          'Transfer #${transfer['_id']?.toString().substring(0, 8) ?? 'N/A'}',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 1,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => TransferReviewScreen(transfer: transfer)),
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Item: $itemName'),
-            Text('From: $fromLocation'),
-            Text('To: $toLocation'),
-            Text('Quantity: $quantity'),
-            Text('Created by: $createdBy'),
-            Text('Created: ${_formatDate(transfer['createdAt'])}'),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Color accent bar
+              Container(
+                width: 4,
+                height: 64,
+                decoration: BoxDecoration(color: Colors.orange, borderRadius: BorderRadius.circular(4)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Header row
+                    Row(
+                      children: [
+                        _chip('PENDING', Colors.orange),
+                        const Spacer(),
+                        if (createdAt != null)
+                          Text(DateFormat('MMM d, HH:mm').format(createdAt),
+                              style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Item name
+                    Text(
+                      itemSku != null ? '$itemName ($itemSku)' : itemName,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    // Route + qty
+                    Text(
+                      'Qty: $quantity  ·  $fromLocation → $toLocation',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Row(children: [
+                      Icon(Icons.person_outline, size: 13, color: Colors.grey[500]),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(createdBy,
+                            style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ),
+                    ]),
+                    if (note?.isNotEmpty == true) ...[
+                      const SizedBox(height: 2),
+                      Row(children: [
+                        Icon(Icons.note_alt_outlined, size: 13, color: Colors.grey[400]),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(note!, style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                              maxLines: 1, overflow: TextOverflow.ellipsis),
+                        ),
+                      ]),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Icon(Icons.chevron_right, color: Colors.orange, size: 20),
+            ],
+          ),
         ),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => TransferReviewScreen(transfer: transfer),
-            ),
-          );
-        },
       ),
     );
   }
 
-  String _formatDate(String? dateString) {
-    if (dateString == null) return 'N/A';
-    try {
-      final date = DateTime.parse(dateString);
-      return '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return dateString;
-    }
+  Widget _chip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color),
+      ),
+      child: Text(label, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
   }
 }

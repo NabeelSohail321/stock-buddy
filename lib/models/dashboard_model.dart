@@ -52,30 +52,45 @@ class LowStockItem {
   final String id;
   final String name;
   final String sku;
+  final String? barcode;
   final int currentStock;
   final int threshold;
   final String? modelNumber;
   final String? serialNumber;
+  final String? unit;
+  final List<Map<String, dynamic>> locations;
 
   LowStockItem({
     required this.id,
     required this.name,
     required this.sku,
+    this.barcode,
     required this.currentStock,
     required this.threshold,
     this.modelNumber,
     this.serialNumber,
+    this.unit,
+    this.locations = const [],
   });
 
   factory LowStockItem.fromJson(Map<String, dynamic> json) {
+    List<Map<String, dynamic>> locationList = [];
+    if (json['locations'] is List) {
+      for (final loc in json['locations'] as List) {
+        if (loc is Map<String, dynamic>) locationList.add(loc);
+      }
+    }
     return LowStockItem(
-      id: json['id']?.toString() ?? '',
+      id: json['id']?.toString() ?? json['_id']?.toString() ?? '',
       name: json['name']?.toString() ?? 'Unknown Item',
       sku: json['sku']?.toString() ?? '',
+      barcode: json['barcode']?.toString(),
       currentStock: json['currentStock'] is int ? json['currentStock'] : int.tryParse(json['currentStock']?.toString() ?? '0') ?? 0,
       threshold: json['threshold'] is int ? json['threshold'] : int.tryParse(json['threshold']?.toString() ?? '0') ?? 0,
       modelNumber: (json['modelNumber'] ?? json['model_number'])?.toString(),
       serialNumber: (json['serialNumber'] ?? json['serial_number'])?.toString(),
+      unit: json['unit']?.toString(),
+      locations: locationList,
     );
   }
 

@@ -285,7 +285,8 @@ class _ItemManagementScreenState extends State<ItemManagementScreen> {
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final itemsProvider = context.watch<ItemsProvider>();
-    final isAdmin = authProvider.currentUser?.role == 'admin';
+    final role = authProvider.currentUser?.role;
+    final isAdmin = role == 'admin' || role == 'super_admin';
 
     return Scaffold(
       appBar: AppBar(

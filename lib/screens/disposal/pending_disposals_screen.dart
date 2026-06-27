@@ -120,7 +120,8 @@ class DisposalCard extends StatelessWidget {
     // Parsing Item Data
     final itemId = disposal['itemId'];
     final itemName = itemId is Map ? itemId['name'] ?? 'Unknown Item' : 'Unknown Item';
-    final sku = itemId is Map ? itemId['sku'] ?? 'No SKU' : 'No SKU';
+    final barcode = itemId is Map ? itemId['barcode'] ?? 'No Barcode' : 'No Barcode';
+    final sku = itemId is Map ? itemId['sku'] ?? '' : '';
 
     // Parsing Location Data
     final fromLocation = disposal['fromLocationId'];
@@ -135,6 +136,9 @@ class DisposalCard extends StatelessWidget {
 
     final note = disposal['note'];
     final photo = disposal['photo'];
+    final assignedManager = itemId is Map && itemId['assignedManagerId'] is Map
+        ? itemId['assignedManagerId']['name']?.toString()
+        : null;
 
     // Ticket ID / Serial Number Logic
     String ticketId = disposal['_id'] ?? '';
@@ -213,9 +217,14 @@ class DisposalCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'SKU: $sku',
+              'Barcode: $barcode',
               style: TextStyle(color: Colors.grey[700], fontSize: 13),
             ),
+            if (sku.isNotEmpty)
+              Text(
+                'SKU: $sku',
+                style: TextStyle(color: Colors.grey[500], fontSize: 12),
+              ),
 
             const Divider(height: 24),
 
@@ -223,6 +232,8 @@ class DisposalCard extends StatelessWidget {
             _buildDetailRow(Icons.location_on_outlined, 'Location:', locationName),
             _buildDetailRow(Icons.inventory_2_outlined, 'Quantity:', quantity),
             _buildDetailRow(Icons.person_outline, 'Requested by:', createdBy),
+            if (assignedManager != null)
+              _buildDetailRow(Icons.manage_accounts_outlined, 'Manager:', assignedManager),
 
             if (note != null && note.toString().isNotEmpty)
               _buildDetailRow(Icons.note_alt_outlined, 'Note:', note),

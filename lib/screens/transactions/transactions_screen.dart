@@ -2,13 +2,13 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-import 'dart:typed_data';
-
-import '../../providers/transaction_provider.dart';
-import '../../providers/user_provider.dart';
-import '../../providers/location_provider.dart';
-import '../../models/transaction_model.dart';
 import '../../models/location_model.dart';
+import '../../models/manager_model.dart';
+import '../../models/transaction_model.dart';
+import '../../providers/location_provider.dart';
+import '../../providers/manager_provider.dart';
+import '../../providers/transaction_provider.dart';
+import '../../utils/snackbar_utils.dart';
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({super.key});
@@ -19,23 +19,19 @@ class TransactionsScreen extends StatefulWidget {
 
 class _TransactionsScreenState extends State<TransactionsScreen> {
   final ScrollController _scrollController = ScrollController();
+  final TextEditingController _searchController = TextEditingController();
 
-  // Filter States
+  // Category / server-side filters
   String? _selectedCategory;
   String? _selectedTransactionType;
   String? _selectedStatus;
   String? _selectedDatePreset;
   DateTimeRange? _selectedDateRange;
-  final TextEditingController _searchController = TextEditingController();
 
-  // Transaction Types available
-  final List<String> _transactionTypes = [
-    'ADD',
-    'TRANSFER',
-    'REPAIR_OUT',
-    'REPAIR_IN',
-    'DISPOSE'
-  ];
+  // Client-side filters
+  String? _selectedLocationId;
+  String? _selectedManagerId;
+  String? _selectedItemId;
 
   final List<Map<String, dynamic>> _categoryOptions = [
     {'id': 'all', 'label': 'All Transactions', 'icon': Icons.list_alt, 'color': Colors.blue},
@@ -60,87 +56,160 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadAllData() async {
-    final transactionProvider = context.read<TransactionProvider>();
-    final userProvider = context.read<UserProvider>();
-    final locationProvider = context.read<LocationProvider>();
+  // 'all' is a UI-only sentinel meaning "no category filter" — never sent to the API.
+  String? get _apiCategory =>
+      (_selectedCategory == null || _selectedCategory == 'all')
+          ? null
+          : _selectedCategory;
 
+  Future<void> _loadAllData() async {
     await Future.wait([
-      transactionProvider.loadAllTransactions(
-        category: _selectedCategory,
-        type: _selectedTransactionType,
-        status: _selectedStatus,
-        datePreset: _selectedDatePreset,
-        search: _searchController.text.isNotEmpty ? _searchController.text : null,
-        startDate: _selectedDateRange?.start.toIso8601String(),
-        endDate: _selectedDateRange?.end.toIso8601String(),
-      ),
-      userProvider.fetchUsers(),
-      locationProvider.loadLocations(),
+      context.read<TransactionProvider>().loadAllTransactions(
+            category: _apiCategory,
+            type: _selectedTransactionType,
+            status: _selectedStatus,
+            datePreset: _selectedDatePreset,
+            search: _searchController.text.isNotEmpty ? _searchController.text : null,
+            startDate: _selectedDateRange?.start.toIso8601String(),
+            endDate: _selectedDateRange?.end.toIso8601String(),
+          ),
+      context.read<LocationProvider>().loadLocations(),
+      context.read<ManagerProvider>().fetchManagers(),
     ]);
   }
 
   void _scrollListener() {
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      final transactionProvider = context.read<TransactionProvider>();
-      if (transactionProvider.hasMore && !transactionProvider.isLoading) {
-        transactionProvider.loadMoreTransactions();
+    final pos = _scrollController.position;
+    // maxScrollExtent == 0 means the list fits on screen; skip auto-load
+    // to avoid an infinite trigger on short (client-filtered) lists.
+    if (pos.maxScrollExtent > 0 &&
+        pos.pixels >= pos.maxScrollExtent - 200) {
+      final transProv = context.read<TransactionProvider>();
+      if (transProv.hasMore && !transProv.isLoading) {
+        transProv.loadMoreTransactions();
       }
     }
   }
 
   void _applyFilters() {
-    final transProv = context.read<TransactionProvider>();
-    transProv.loadAllTransactions(
-      category: _selectedCategory,
-      type: _selectedTransactionType,
-      status: _selectedStatus,
-      datePreset: _selectedDatePreset,
-      search: _searchController.text.isNotEmpty ? _searchController.text : null,
-      startDate: _selectedDateRange?.start.toIso8601String(),
-      endDate: _selectedDateRange?.end != null 
-          ? _selectedDateRange!.end.add(const Duration(hours: 23, minutes: 59, seconds: 59)).toIso8601String()
-          : null,
-    );
+    context.read<TransactionProvider>().loadAllTransactions(
+          category: _apiCategory,
+          type: _selectedTransactionType,
+          status: _selectedStatus,
+          datePreset: _selectedDatePreset,
+          search: _searchController.text.isNotEmpty ? _searchController.text : null,
+          startDate: _selectedDateRange?.start.toIso8601String(),
+          endDate: _selectedDateRange?.end != null
+              ? _selectedDateRange!.end
+                  .add(const Duration(hours: 23, minutes: 59, seconds: 59))
+                  .toIso8601String()
+              : null,
+        );
+  }
+
+  /// Client-side filter applied on top of server-fetched list.
+  List<Transaction> _applyClientFilters(
+    List<Transaction> all,
+    List<Manager> managers,
+  ) {
+    if (_selectedLocationId == null && _selectedManagerId == null && _selectedItemId == null) return all;
+
+    Set<String>? managerLocationIds;
+    if (_selectedManagerId != null) {
+      final mgr = managers.where((m) => m.id == _selectedManagerId).firstOrNull;
+      if (mgr != null) {
+        managerLocationIds = mgr.assignedLocationIds.toSet();
+      }
+    }
+
+    return all.where((tx) {
+      // Item filter: transaction must be for the selected item
+      if (_selectedItemId != null && tx.itemId != _selectedItemId) return false;
+
+      // Location filter: transaction must involve the selected location
+      if (_selectedLocationId != null) {
+        final matchFrom = tx.fromLocationId == _selectedLocationId;
+        final matchTo = tx.toLocationId == _selectedLocationId;
+        if (!matchFrom && !matchTo) return false;
+      }
+
+      // Manager filter: transaction must be assigned to this manager directly,
+      // or involve one of the manager's assigned locations as a fallback.
+      if (_selectedManagerId != null) {
+        if (tx.managerId == _selectedManagerId) return true;
+        if (managerLocationIds != null) {
+          final matchFrom = tx.fromLocationId != null && managerLocationIds.contains(tx.fromLocationId);
+          final matchTo = tx.toLocationId != null && managerLocationIds.contains(tx.toLocationId);
+          if (!matchFrom && !matchTo) return false;
+        }
+      }
+
+      return true;
+    }).toList();
+  }
+
+  bool get _hasActiveClientFilters =>
+      _selectedLocationId != null || _selectedManagerId != null || _selectedItemId != null;
+
+  int get _activeFilterCount {
+    int count = 0;
+    if (_selectedStatus != null) count++;
+    if (_selectedDatePreset != null) count++;
+    if (_selectedDateRange != null) count++;
+    if (_selectedLocationId != null) count++;
+    if (_selectedManagerId != null) count++;
+    if (_selectedItemId != null) count++;
+    return count;
+  }
+
+  void _clearAllFilters() {
+    setState(() {
+      _selectedTransactionType = null;
+      _selectedStatus = null;
+      _selectedDatePreset = null;
+      _selectedDateRange = null;
+      _selectedLocationId = null;
+      _selectedManagerId = null;
+      _selectedItemId = null;
+      _searchController.clear();
+    });
+    _applyFilters();
   }
 
   Future<void> _selectDateRange() async {
-    final DateTimeRange? picked = await showDateRangePicker(
+    final picked = await showDateRangePicker(
       context: context,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
       initialDateRange: _selectedDateRange,
-      builder: (context, child) {
-        return Theme(
-          data: ThemeData.light().copyWith(
-            primaryColor: Colors.blue.shade800,
-            colorScheme: ColorScheme.light(primary: Colors.blue.shade800),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context, child) => Theme(
+        data: ThemeData.light().copyWith(
+          primaryColor: Colors.blue.shade800,
+          colorScheme: ColorScheme.light(primary: Colors.blue.shade800),
+        ),
+        child: child!,
+      ),
     );
-
     if (picked != null) {
-      setState(() {
-        _selectedDateRange = picked;
-      });
+      setState(() => _selectedDateRange = picked);
       _applyFilters();
     }
   }
+
+  // ─── Build ───────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
-        title: Text(_selectedCategory == null 
-            ? 'Transactions' 
-            : _categoryOptions.firstWhere((c) => c['id'] == _selectedCategory)['label']),
+        title: Text(_selectedCategory == null
+            ? 'Transactions'
+            : _categoryOptions
+                .firstWhere((c) => c['id'] == _selectedCategory)['label']),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
-        leading: _selectedCategory != null 
+        leading: _selectedCategory != null
             ? IconButton(
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => setState(() => _selectedCategory = null),
@@ -149,40 +218,63 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         actions: [
           if (_selectedCategory != null)
             Consumer<TransactionProvider>(
-              builder: (context, transProv, _) {
+              builder: (_, transProv, __) {
                 if (transProv.isLoading) {
                   return const Padding(
-                    padding: EdgeInsets.all(12.0),
+                    padding: EdgeInsets.all(12),
                     child: SizedBox(
                       width: 24,
                       height: 24,
-                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                      child: CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2),
                     ),
                   );
                 }
                 return IconButton(
                   icon: const Icon(Icons.picture_as_pdf),
+                  tooltip: 'Export PDF',
                   onPressed: () async {
                     await transProv.exportTransactionsToPdf();
                     if (transProv.errorMessage.isNotEmpty && context.mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(transProv.errorMessage),
-                          backgroundColor: Colors.red,
-                          duration: const Duration(seconds: 10), // Long duration
-                          action: SnackBarAction(
-                            label: 'OK',
-                            textColor: Colors.white,
-                            onPressed: () {},
-                          ),
-                        ),
-                      );
+                      AppSnackBar.showError(context, transProv.errorMessage);
                       transProv.clearError();
                     }
                   },
-                  tooltip: 'Download PDF',
                 );
               },
+            ),
+          // Filter count badge
+          if (_selectedCategory != null && _activeFilterCount > 0)
+            Padding(
+              padding: const EdgeInsets.only(right: 4),
+              child: Stack(
+                alignment: Alignment.topRight,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.filter_list),
+                    tooltip: 'Active filters',
+                    onPressed: _clearAllFilters,
+                  ),
+                  Positioned(
+                    right: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: const BoxDecoration(
+                        color: Colors.orange,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '$_activeFilterCount',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -190,11 +282,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         ],
       ),
-      body: _selectedCategory == null 
-          ? _buildCategoryGrid() 
+      body: _selectedCategory == null
+          ? _buildCategoryGrid()
           : _buildTransactionList(),
     );
   }
+
+  // ─── Category grid ────────────────────────────────────────────────────────
 
   Widget _buildCategoryGrid() {
     return GridView.builder(
@@ -207,25 +301,27 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       ),
       itemCount: _categoryOptions.length,
       itemBuilder: (context, index) {
-        final category = _categoryOptions[index];
+        final cat = _categoryOptions[index];
         return Card(
           elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: InkWell(
             onTap: () {
-              setState(() => _selectedCategory = category['id']);
+              setState(() => _selectedCategory = cat['id']);
               _applyFilters();
             },
             borderRadius: BorderRadius.circular(16),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(category['icon'], size: 48, color: category['color']),
+                Icon(cat['icon'], size: 48, color: cat['color']),
                 const SizedBox(height: 12),
                 Text(
-                  category['label'],
+                  cat['label'],
                   textAlign: TextAlign.center,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ],
             ),
@@ -235,33 +331,86 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
+  // ─── Transaction list ─────────────────────────────────────────────────────
+
+  /// Derives a sorted unique item list from loaded transactions for the Item filter chip.
+  List<({String id, String name})> _buildItemList(List<Transaction> transactions) {
+    final seen = <String>{};
+    final result = <({String id, String name})>[];
+    for (final tx in transactions) {
+      if (tx.itemId != null && seen.add(tx.itemId!)) {
+        result.add((id: tx.itemId!, name: tx.itemName));
+      }
+    }
+    result.sort((a, b) => a.name.compareTo(b.name));
+    return result;
+  }
+
   Widget _buildTransactionList() {
-    return Consumer3<TransactionProvider, UserProvider, LocationProvider>(
-      builder: (context, transProv, userProv, locProv, child) {
-        return Column(
-          children: [
-            // --- Advanced Filter Bar ---
-            _buildAdvancedFilterBar(),
-            const Divider(height: 1),
+    return Consumer3<TransactionProvider, LocationProvider, ManagerProvider>(
+      builder: (context, transProv, locProv, mgrProv, _) {
+        final itemList = _buildItemList(transProv.allTransactions);
+        final filtered =
+            _applyClientFilters(transProv.allTransactions, mgrProv.managers);
 
-            // --- List Section ---
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _loadAllData,
-                child: ListView.builder(
-                  controller: _scrollController,
-                  padding: const EdgeInsets.all(12),
-                  itemCount: transProv.allTransactions.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == transProv.allTransactions.length) {
-                      return _buildLoadMoreIndicator(transProv);
-                    }
-
-                    final transaction = transProv.allTransactions[index];
-                    return _buildTransactionCard(transaction, userProv, locProv);
-                  },
+        if (transProv.errorMessage.isNotEmpty &&
+            transProv.allTransactions.isEmpty) {
+          return Column(
+            children: [
+              _buildAdvancedFilterBar(locProv.locations, mgrProv.managers, itemList),
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.error_outline,
+                          size: 56, color: Colors.red),
+                      const SizedBox(height: 12),
+                      Text(transProv.errorMessage,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(color: Colors.red)),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _loadAllData,
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                      ),
+                    ],
+                  ),
                 ),
               ),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _buildAdvancedFilterBar(locProv.locations, mgrProv.managers, itemList),
+
+            // Client-filter result count bar
+            if (_hasActiveClientFilters)
+              _buildClientFilterResultBar(filtered.length,
+                  transProv.allTransactions.length),
+
+            const Divider(height: 1),
+
+            Expanded(
+              child: filtered.isEmpty && !transProv.isLoading
+                  ? _buildEmptyState()
+                  : RefreshIndicator(
+                      onRefresh: _loadAllData,
+                      child: ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(12),
+                        itemCount: filtered.length + 1,
+                        itemBuilder: (context, index) {
+                          if (index == filtered.length) {
+                            return _buildLoadMoreIndicator(transProv);
+                          }
+                          return _buildTransactionCard(filtered[index], locProv, mgrProv);
+                        },
+                      ),
+                    ),
             ),
           ],
         );
@@ -269,20 +418,98 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  Widget _buildAdvancedFilterBar() {
+  Widget _buildClientFilterResultBar(int shown, int total) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      color: Colors.blue.shade50,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: Row(
+        children: [
+          Icon(Icons.filter_alt, size: 14, color: Colors.blue.shade700),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              'Showing $shown of $total loaded transactions',
+              style:
+                  TextStyle(fontSize: 12, color: Colors.blue.shade700),
+            ),
+          ),
+          TextButton(
+            style: TextButton.styleFrom(
+              padding: EdgeInsets.zero,
+              minimumSize: const Size(0, 0),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: () {
+              setState(() {
+                _selectedLocationId = null;
+                _selectedManagerId = null;
+                _selectedItemId = null;
+              });
+            },
+            child: Text('Clear',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.blue.shade700,
+                    fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.receipt_long_outlined, size: 72, color: Colors.grey[300]),
+          const SizedBox(height: 16),
+          Text(
+            _hasActiveClientFilters
+                ? 'No transactions match the selected filters'
+                : 'No transactions found',
+            style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500),
+          ),
+          if (_hasActiveClientFilters) ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () => setState(() {
+                _selectedLocationId = null;
+                _selectedManagerId = null;
+                _selectedItemId = null;
+              }),
+              icon: const Icon(Icons.clear),
+              label: const Text('Clear filters'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ─── Advanced filter bar ──────────────────────────────────────────────────
+
+  Widget _buildAdvancedFilterBar(
+      List<Location> locations, List<Manager> managers, List<({String id, String name})> items) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       color: Colors.white,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Search
           TextField(
             controller: _searchController,
             decoration: InputDecoration(
               hintText: 'Search items or notes...',
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
+              border:
+                  OutlineInputBorder(borderRadius: BorderRadius.circular(30)),
               contentPadding: const EdgeInsets.symmetric(horizontal: 20),
-              suffixIcon: _searchController.text.isNotEmpty 
+              suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(
                       icon: const Icon(Icons.clear),
                       onPressed: () {
@@ -293,44 +520,119 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   : null,
             ),
             onSubmitted: (_) => _applyFilters(),
+            onChanged: (v) {
+              if (v.isEmpty) _applyFilters();
+            },
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
+
+          // Scrollable chip row — server filters + client filters together
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _buildFilterDropdown(
+                // Date preset
+                _dropdownChip(
+                  label: 'Date',
                   value: _selectedDatePreset,
                   hint: 'Date Preset',
-                  items: ['day', 'week', 'month', 'year'],
+                  items: const ['day', 'week', 'month', 'year'],
+                  itemLabel: (v) => v.toUpperCase(),
                   onChanged: (val) {
-                    setState(() => _selectedDatePreset = val);
+                    setState(() {
+                      _selectedDatePreset = val;
+                      if (val != null) _selectedDateRange = null;
+                    });
                     _applyFilters();
                   },
                 ),
                 const SizedBox(width: 8),
-                _buildFilterDropdown(
+
+                // Status
+                _dropdownChip(
+                  label: 'Status',
                   value: _selectedStatus,
                   hint: 'Status',
-                  items: ['pending', 'approved', 'rejected'],
+                  items: const ['pending', 'approved', 'rejected'],
+                  itemLabel: (v) => v.toUpperCase(),
                   onChanged: (val) {
                     setState(() => _selectedStatus = val);
                     _applyFilters();
                   },
                 ),
                 const SizedBox(width: 8),
+
+                // Location filter (client-side)
+                _dropdownChipDynamic<Location>(
+                  hint: 'Location',
+                  value: _selectedLocationId,
+                  items: locations,
+                  itemId: (l) => l.id,
+                  itemLabel: (l) => l.name,
+                  icon: Icons.location_on_outlined,
+                  color: Colors.teal,
+                  onChanged: (val) =>
+                      setState(() => _selectedLocationId = val),
+                ),
+                const SizedBox(width: 8),
+
+                // Manager filter (client-side)
+                _dropdownChipDynamic<Manager>(
+                  hint: 'Manager',
+                  value: _selectedManagerId,
+                  items: managers.where((m) => m.isActive).toList(),
+                  itemId: (m) => m.id,
+                  itemLabel: (m) => m.name,
+                  icon: Icons.manage_accounts_outlined,
+                  color: Colors.purple,
+                  onChanged: (val) =>
+                      setState(() => _selectedManagerId = val),
+                ),
+                const SizedBox(width: 8),
+
+                // Item filter (client-side)
+                _dropdownChipDynamic<({String id, String name})>(
+                  hint: 'Item',
+                  value: _selectedItemId,
+                  items: items,
+                  itemId: (i) => i.id,
+                  itemLabel: (i) => i.name,
+                  icon: Icons.inventory_2_outlined,
+                  color: Colors.indigo,
+                  onChanged: (val) => setState(() => _selectedItemId = val),
+                ),
+                const SizedBox(width: 8),
+
+                // Custom date range (hidden when preset chosen)
                 if (_selectedDatePreset == null)
                   InputChip(
                     avatar: const Icon(Icons.calendar_today, size: 16),
-                    label: Text(_selectedDateRange == null
-                        ? 'Custom Date'
-                        : '${DateFormat('MMM d').format(_selectedDateRange!.start)} - ${DateFormat('MMM d').format(_selectedDateRange!.end)}'),
+                    label: Text(
+                      _selectedDateRange == null
+                          ? 'Custom Date'
+                          : '${DateFormat('MMM d').format(_selectedDateRange!.start)} – ${DateFormat('MMM d').format(_selectedDateRange!.end)}',
+                    ),
+                    selected: _selectedDateRange != null,
                     onPressed: _selectDateRange,
-                    onDeleted: _selectedDateRange != null ? () {
-                      setState(() => _selectedDateRange = null);
-                      _applyFilters();
-                    } : null,
+                    onDeleted: _selectedDateRange != null
+                        ? () {
+                            setState(() => _selectedDateRange = null);
+                            _applyFilters();
+                          }
+                        : null,
                   ),
+
+                // Clear all button when any filter active
+                if (_activeFilterCount > 0) ...[
+                  const SizedBox(width: 8),
+                  ActionChip(
+                    avatar: const Icon(Icons.close, size: 14),
+                    label: const Text('Clear all'),
+                    backgroundColor: Colors.red.shade50,
+                    labelStyle: TextStyle(color: Colors.red.shade700),
+                    onPressed: _clearAllFilters,
+                  ),
+                ],
               ],
             ),
           ),
@@ -339,25 +641,35 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  Widget _buildFilterDropdown({
+  /// Dropdown chip for simple string lists (server-side filters).
+  Widget _dropdownChip({
+    required String label,
     required String? value,
     required String hint,
     required List<String> items,
-    required Function(String?) onChanged,
+    required String Function(String) itemLabel,
+    required void Function(String?) onChanged,
   }) {
+    final active = value != null;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: value != null ? Colors.blue.shade100 : Colors.grey.shade200,
+        color: active ? Colors.blue.shade100 : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: active ? Colors.blue.shade400 : Colors.grey.shade300),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
-          hint: Text(hint),
+          hint: Text(hint, style: const TextStyle(fontSize: 13)),
+          isDense: true,
           items: [
-            DropdownMenuItem(value: null, child: Text('All $hint')),
-            ...items.map((e) => DropdownMenuItem(value: e, child: Text(e.toUpperCase()))),
+            DropdownMenuItem(
+                value: null, child: Text('All $hint', style: const TextStyle(fontSize: 13))),
+            ...items.map((e) => DropdownMenuItem(
+                value: e,
+                child: Text(itemLabel(e), style: const TextStyle(fontSize: 13)))),
           ],
           onChanged: onChanged,
         ),
@@ -365,298 +677,402 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
+  /// Dropdown chip for typed model lists (client-side filters).
+  Widget _dropdownChipDynamic<T>({
+    required String hint,
+    required String? value,
+    required List<T> items,
+    required String Function(T) itemId,
+    required String Function(T) itemLabel,
+    required IconData icon,
+    required Color color,
+    required void Function(String?) onChanged,
+  }) {
+    final active = value != null;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      constraints: const BoxConstraints(maxWidth: 190),
+      decoration: BoxDecoration(
+        color: active ? color.withValues(alpha: 0.12) : Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+            color: active ? color : Colors.grey.shade300),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          hint: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Text(hint, style: const TextStyle(fontSize: 13)),
+            ],
+          ),
+          isDense: true,
+          isExpanded: true,
+          // Always show icon in the chip button regardless of selection state.
+          selectedItemBuilder: (context) => [
+            // "All X" row (null item)
+            Row(children: [
+              Icon(icon, size: 14, color: Colors.grey[600]),
+              const SizedBox(width: 4),
+              Flexible(
+                child: Text('All $hint',
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis),
+              ),
+            ]),
+            // One row per model item
+            ...items.map((item) => Row(children: [
+                  Icon(icon, size: 14, color: color),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      itemLabel(item),
+                      style: TextStyle(
+                          fontSize: 13,
+                          color: color,
+                          fontWeight: FontWeight.w500),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ])),
+          ],
+          items: [
+            DropdownMenuItem<String>(
+              value: null,
+              child: Text('All $hint', style: const TextStyle(fontSize: 13)),
+            ),
+            ...items.map((item) => DropdownMenuItem<String>(
+                  value: itemId(item),
+                  child: Text(
+                    itemLabel(item),
+                    style: const TextStyle(fontSize: 13),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                )),
+          ],
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+
+  // ─── Load more ────────────────────────────────────────────────────────────
+
   Widget _buildLoadMoreIndicator(TransactionProvider transProv) {
     return Padding(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16),
       child: Center(
         child: transProv.isLoading
             ? const CircularProgressIndicator()
             : transProv.hasMore
                 ? OutlinedButton(
-                    onPressed: () => transProv.loadMoreTransactions(),
-                    child: const Text("Load More Data"),
+                    onPressed: transProv.loadMoreTransactions,
+                    child: const Text('Load More'),
                   )
-                : const Text('No more transactions', style: TextStyle(color: Colors.grey)),
+                : Text('All transactions loaded',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 13)),
       ),
     );
   }
 
-  Widget _buildTransactionCard(
-      Transaction transaction,
-      UserProvider userProv,
-      LocationProvider locProv
-      ) {
+  // ─── Transaction card (compact summary — tap for full detail) ────────────
 
-    String getUserName(String? userId) {
-      if (userId == null) return '';
-      try {
-        final user = userProv.users.firstWhere(
-              (u) => u['_id'] == userId || u['id'] == userId,
-          orElse: () => null,
-        );
-        return user != null ? user['name'] ?? 'Unknown User' : 'Unknown User';
-      } catch (e) {
-        return 'Unknown User';
-      }
+  Widget _buildTransactionCard(Transaction tx, LocationProvider locProv, ManagerProvider mgrProv) {
+    String locName(String? id) {
+      if (id == null) return '';
+      return locProv.getLocationById(id)?.name ?? '';
     }
 
-    String getLocationName(String? locId) {
-      if (locId == null) return '';
-      final Location? loc = locProv.getLocationById(locId);
-      return loc != null ? loc.name : 'Unknown Location';
-    }
-
-    final createdByName = getUserName(transaction.createdBy);
-    final approvedByName = getUserName(transaction.approvedBy);
-    final fromLocName = getLocationName(transaction.fromLocationId);
-    final toLocName = getLocationName(transaction.toLocationId);
+    final locationLine = tx.locationDisplay.isNotEmpty
+        ? tx.locationDisplay
+        : tx.fromLocation ?? locName(tx.fromLocationId);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
+      margin: const EdgeInsets.only(bottom: 10),
+      elevation: 1,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    color: _getTypeColor(transaction.type).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: _getTypeColor(transaction.type)),
-                  ),
-                  child: Text(
-                    transaction.displayType,
-                    style: TextStyle(
-                      color: _getTypeColor(transaction.type),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                if (transaction.status != null)
-                  Container(
-                    margin: const EdgeInsets.only(left: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: _getStatusColor(transaction.status!).withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      transaction.status!.toUpperCase(),
-                      style: TextStyle(
-                        color: _getStatusColor(transaction.status!),
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                const Spacer(),
-                Text(
-                  _formatDate(transaction.createdAt),
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12),
-                ),
-              ],
-            ),
-            const Divider(height: 20),
-            Text(
-              transaction.itemName,
-              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow(Icons.inventory_2_outlined, 'Quantity:', '${transaction.quantity}'),
-            if (transaction.type == 'TRANSFER' && transaction.toLocationId != null) ...[
-              _buildDetailRow(Icons.output_outlined, 'From:', fromLocName),
-              _buildDetailRow(Icons.input_outlined, 'To:', toLocName),
-            ] else if (transaction.fromLocationId != null) ...[
-              _buildDetailRow(Icons.location_on_outlined, 'Location:', fromLocName),
-            ],
-            if (transaction.vendorName != null && transaction.vendorName!.isNotEmpty)
-              _buildDetailRow(Icons.business_outlined, 'Vendor:', transaction.vendorName!),
-            if (transaction.serialNumber != null && transaction.serialNumber!.isNotEmpty)
-              _buildDetailRow(Icons.pin_outlined, 'Serial No:', transaction.serialNumber!),
-            if (transaction.reason != null && transaction.reason!.isNotEmpty)
-              _buildDetailRow(Icons.question_mark_rounded, 'Reason:', transaction.reason!),
-            if (transaction.note != null && transaction.note!.isNotEmpty)
-              _buildDetailRow(Icons.note_alt_outlined, 'Note:', transaction.note!),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: Column(
-                children: [
-                  _buildDetailRow(Icons.person_outline, 'Created By:', createdByName),
-                  if (transaction.approvedBy != null) ...[
-                    const SizedBox(height: 4),
-                    _buildDetailRow(Icons.verified_user_outlined, 'Approved By:', approvedByName),
-                  ],
-                  if (transaction.approvedAt != null) ...[
-                    const SizedBox(height: 4),
-                    _buildDetailRow(Icons.calendar_month_outlined, 'Approved At:', _formatDate(transaction.approvedAt!)),
-                  ],
-                  if (transaction.updatedAt != null && transaction.updatedAt!.difference(transaction.createdAt).inSeconds.abs() > 60) ...[
-                    const SizedBox(height: 4),
-                    _buildDetailRow(Icons.update_outlined, 'Last Updated:', _formatDate(transaction.updatedAt!)),
-                  ],
-                ],
-              ),
-            ),
-            if (transaction.repairReturnChecklist.isNotEmpty) ...[
-              const Divider(height: 24),
-              _buildChecklistSection(context, transaction),
-            ],
-            if (transaction.photo != null && transaction.photo!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              const Text(
-                'Attachment:',
-                style: TextStyle(fontWeight: FontWeight.w500, fontSize: 12, color: Colors.grey),
-              ),
-              const SizedBox(height: 4),
-              InkWell(
-                onTap: () => _showFullScreenImage(context, transaction.photo!),
-                child: Container(
-                  height: 100,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: _buildImageFromBase64(transaction.photo!),
-                  ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _showTransactionDetail(tx, locProv, mgrProv),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          child: Row(
+            children: [
+              // Color accent bar
+              Container(
+                width: 4,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: _getTypeColor(tx.type),
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Type badge + status + date
+                    Row(
+                      children: [
+                        _typeChip(tx.type, tx.displayType),
+                        const SizedBox(width: 6),
+                        _statusChip(tx.status),
+                        const Spacer(),
+                        Text(
+                          DateFormat('MMM d, HH:mm').format(tx.createdAt),
+                          style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    // Item name
+                    Text(
+                      tx.itemName,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    // Qty + location
+                    Text(
+                      'Qty: ${tx.quantity}  ·  $locationLine',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildChecklistSection(BuildContext context, Transaction transaction) {
-    return InkWell(
-      onTap: () => _showChecklistPopup(context, transaction),
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade50,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.blue.shade100),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.checklist_rtl, color: Colors.blue.shade800, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'Tap to show repair check list',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: Colors.blue.shade800,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade800,
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                '${transaction.repairReturnChecklist.length}',
-                style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // ─── Full detail bottom sheet ─────────────────────────────────────────────
 
-  void _showChecklistPopup(BuildContext context, Transaction transaction) {
-    showDialog(
+  void _showTransactionDetail(Transaction tx, LocationProvider locProv, ManagerProvider mgrProv) {
+    String locName(String? id) {
+      if (id == null) return '';
+      return locProv.getLocationById(id)?.name ?? '';
+    }
+
+    final fromLocName = tx.fromLocation ?? locName(tx.fromLocationId);
+    final toLocName = tx.toLocation ?? locName(tx.toLocationId);
+    final managerName = tx.managerId != null
+        ? mgrProv.managers.where((m) => m.id == tx.managerId).firstOrNull?.name
+        : null;
+
+    showModalBottomSheet(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) {
-          return AlertDialog(
-            title: Row(
-              children: [
-                const Icon(Icons.checklist_rtl, color: Colors.blue),
-                const SizedBox(width: 10),
-                const Expanded(child: Text('Repair Check List')),
-                // Note: Checklist editing is now disabled per user request
-              ],
-            ),
-            content: SizedBox(
-              width: double.maxFinite,
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: transaction.repairReturnChecklist.length,
-                itemBuilder: (context, index) {
-                  final item = transaction.repairReturnChecklist[index];
-                  return CheckboxListTile(
-                    title: Text(
-                      item.label,
-                      style: TextStyle(
-                        decoration: item.completed ? TextDecoration.lineThrough : null,
-                        color: item.completed ? Colors.grey : Colors.black87,
-                      ),
-                    ),
-                    value: item.completed,
-                    onChanged: null, // Editing disabled
-                    controlAffinity: ListTileControlAffinity.leading,
-                  );
-                },
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 0.95,
+        builder: (_, scrollCtrl) => Container(
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: Column(
+            children: [
+              // Handle
+              Container(
+                margin: const EdgeInsets.only(top: 10, bottom: 4),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+              // Header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Row(
+                  children: [
+                    _typeChip(tx.type, tx.displayType),
+                    const SizedBox(width: 8),
+                    _statusChip(tx.status),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              // Content
+              Expanded(
+                child: ListView(
+                  controller: scrollCtrl,
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    // Item section
+                    _sectionHeader('Item'),
+                    _detailRow(Icons.inventory_2_outlined, 'Name', tx.itemName),
+                    if (tx.itemSku != null) _detailRow(Icons.tag, 'SKU', tx.itemSku!),
+                    if (tx.itemModelNumber?.isNotEmpty == true)
+                      _detailRow(Icons.computer_outlined, 'Model', tx.itemModelNumber!),
+                    if (tx.itemSerialNumber?.isNotEmpty == true)
+                      _detailRow(Icons.pin_outlined, 'Item Serial', tx.itemSerialNumber!),
+                    if (tx.itemPurchaseDate?.isNotEmpty == true)
+                      _detailRow(Icons.calendar_today_outlined, 'Purchased', _formatItemDate(tx.itemPurchaseDate!)),
+                    if (tx.itemUnit?.isNotEmpty == true)
+                      _detailRow(Icons.scale_outlined, 'Unit', tx.itemUnit!),
+                    _detailRow(Icons.numbers_outlined, 'Quantity', '${tx.quantity}'),
+                    const SizedBox(height: 16),
+
+                    // Location section
+                    _sectionHeader('Location'),
+                    if (tx.type == 'TRANSFER') ...[
+                      _detailRow(Icons.output_outlined, 'From', fromLocName.isNotEmpty ? fromLocName : '—'),
+                      _detailRow(Icons.input_outlined, 'To', toLocName.isNotEmpty ? toLocName : '—'),
+                    ] else if (tx.type == 'ADD') ...[
+                      _detailRow(Icons.location_on_outlined, 'Location',
+                          (toLocName.isNotEmpty ? toLocName : fromLocName).isNotEmpty
+                              ? (toLocName.isNotEmpty ? toLocName : fromLocName)
+                              : '—'),
+                    ] else ...[
+                      if (fromLocName.isNotEmpty)
+                        _detailRow(Icons.location_on_outlined, 'From', fromLocName),
+                      if (toLocName.isNotEmpty)
+                        _detailRow(Icons.location_on_outlined, 'To', toLocName),
+                    ],
+                    const SizedBox(height: 16),
+
+                    // Details section
+                    if (tx.vendorName?.isNotEmpty == true ||
+                        tx.serialNumber?.isNotEmpty == true ||
+                        tx.reason?.isNotEmpty == true ||
+                        tx.note?.isNotEmpty == true) ...[
+                      _sectionHeader('Details'),
+                      if (tx.vendorName?.isNotEmpty == true)
+                        _detailRow(Icons.business_outlined, 'Vendor', tx.vendorName!),
+                      if (tx.serialNumber?.isNotEmpty == true)
+                        _detailRow(Icons.pin_outlined, 'Serial No', tx.serialNumber!),
+                      if (tx.reason?.isNotEmpty == true)
+                        _detailRow(Icons.help_outline, 'Reason', tx.reason!),
+                      if (tx.note?.isNotEmpty == true)
+                        _detailRow(Icons.note_alt_outlined, 'Note', tx.note!),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Audit section
+                    _sectionHeader('Audit'),
+                    _detailRow(Icons.schedule, 'Created', _formatDate(tx.createdAt)),
+                    if (tx.createdByName?.isNotEmpty == true)
+                      _detailRow(Icons.person_outline, 'Created By',
+                          tx.createdByEmail?.isNotEmpty == true
+                              ? '${tx.createdByName!} (${tx.createdByEmail!})'
+                              : tx.createdByName!),
+                    if (managerName?.isNotEmpty == true)
+                      _detailRow(Icons.manage_accounts_outlined, 'Manager', managerName!),
+                    if (tx.approvedByName?.isNotEmpty == true)
+                      _detailRow(Icons.verified_user_outlined, 'Approved By', tx.approvedByName!),
+                    if (tx.approvedAt != null)
+                      _detailRow(Icons.calendar_month_outlined, 'Approved At', _formatDate(tx.approvedAt!)),
+                    const SizedBox(height: 16),
+
+                    // Photo
+                    if (tx.photo?.isNotEmpty == true) ...[
+                      _sectionHeader('Attachment'),
+                      const SizedBox(height: 8),
+                      InkWell(
+                        onTap: () => _showFullScreenImage(context, tx.photo!),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: _buildImageFromBase64(tx.photo!),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // Repair checklist
+                    if (tx.repairReturnChecklist.isNotEmpty) ...[
+                      _sectionHeader('Repair Checklist'),
+                      const SizedBox(height: 4),
+                      ...tx.repairReturnChecklist.map((item) => CheckboxListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            value: item.completed,
+                            onChanged: null,
+                            title: Text(
+                              item.label,
+                              style: TextStyle(
+                                fontSize: 14,
+                                decoration: item.completed ? TextDecoration.lineThrough : null,
+                                color: item.completed ? Colors.grey : Colors.black87,
+                              ),
+                            ),
+                            controlAffinity: ListTileControlAffinity.leading,
+                          )),
+                    ],
+                  ],
+                ),
               ),
             ],
-          );
-        },
+          ),
+        ),
       ),
     );
   }
 
-  Future<bool> _saveChecklistChanges(BuildContext context, Transaction transaction) async {
-    final transProv = context.read<TransactionProvider>();
-    
-    // Prepare items for PATCH
-    final items = transaction.repairReturnChecklist.map((e) => {
-      'id': e.id,
-      'completed': e.completed,
-    }).toList();
-
-    final success = await transProv.updateRepairChecklist(transaction.id, items);
-
-    if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(success ? 'Checklist updated successfully' : 'Failed to update checklist'),
-          backgroundColor: success ? Colors.green : Colors.red,
+  Widget _sectionHeader(String title) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+            color: Colors.grey[500],
+            letterSpacing: 1.1,
+          ),
         ),
       );
-    }
-    return success;
+
+  Widget _typeChip(String type, String label) {
+    final color = _getTypeColor(type);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color),
+      ),
+      child: Text(label,
+          style: TextStyle(
+              color: color, fontWeight: FontWeight.bold, fontSize: 12)),
+    );
   }
 
-  Widget _buildDetailRow(IconData icon, String label, String value) {
+  Widget _statusChip(String status) {
+    final color = _getStatusColor(status);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(status.toUpperCase(),
+          style: TextStyle(
+              color: color, fontSize: 10, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
+  Widget _detailRow(IconData icon, String label, String value) {
     if (value.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -667,62 +1083,43 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           const SizedBox(width: 8),
           SizedBox(
             width: 90,
-            child: Text(
-              label,
-              style: TextStyle(
-                fontWeight: FontWeight.w500,
-                color: Colors.grey[800],
-                fontSize: 13,
-              ),
-            ),
+            child: Text(label,
+                style: TextStyle(
+                    fontWeight: FontWeight.w500,
+                    color: Colors.grey[800],
+                    fontSize: 13)),
           ),
           Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontSize: 13),
-            ),
-          ),
+              child: Text(value, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );
   }
 
-  Widget _buildImageFromBase64(String base64Image) {
+  Widget _buildImageFromBase64(String b64) {
     try {
-      String cleanBase64 = base64Image;
-      if (base64Image.contains(',')) {
-        cleanBase64 = base64Image.split(',').last;
-      }
-      Uint8List bytes = base64Decode(cleanBase64);
-      return Image.memory(bytes, fit: BoxFit.cover);
-    } catch (e) {
+      final clean = b64.contains(',') ? b64.split(',').last : b64;
+      return Image.memory(base64Decode(clean), fit: BoxFit.cover);
+    } catch (_) {
       return const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.broken_image, color: Colors.grey),
-            Text("Image Error", style: TextStyle(fontSize: 10)),
-          ],
-        ),
-      );
+          child: Icon(Icons.broken_image, color: Colors.grey));
     }
   }
 
-  void _showFullScreenImage(BuildContext context, String base64Image) {
+  void _showFullScreenImage(BuildContext context, String b64) {
     showDialog(
       context: context,
-      builder: (context) => Dialog(
+      builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         child: Stack(
           alignment: Alignment.topRight,
           children: [
             InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: _buildImageFromBase64(base64Image),
-            ),
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: _buildImageFromBase64(b64)),
             Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.all(8),
               child: CircleAvatar(
                 backgroundColor: Colors.black54,
                 child: IconButton(
@@ -767,7 +1164,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
-  String _formatDate(DateTime date) {
-    return DateFormat('MMM dd, yyyy HH:mm').format(date);
+  String _formatDate(DateTime dt) =>
+      DateFormat('MMM dd, yyyy HH:mm').format(dt);
+
+  String _formatItemDate(String raw) {
+    try {
+      return DateFormat('MMM dd, yyyy').format(DateTime.parse(raw));
+    } catch (_) {
+      return raw;
+    }
   }
 }

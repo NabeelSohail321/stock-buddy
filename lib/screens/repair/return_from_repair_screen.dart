@@ -214,6 +214,11 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
 
                         // 5. Submit Button
                         _buildSubmitButton(repairProvider),
+                        const SizedBox(height: 12),
+
+                        // 6. Cannot Be Repaired — Dispose Option
+                        if (_selectedRepairTicketId != null)
+                          _buildDisposeButton(repairProvider),
                         const SizedBox(height: 30),
                       ],
                     ),
@@ -319,8 +324,8 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
     // Resolve "Sent From" Location Name
     String sentFromLocationName = _resolveLocationName(ticket['locationId'], itemsProvider.locations);
 
-    // Resolve Serial Number
-    String serialDisplay = _getDisplaySerial(ticket);
+    // Resolve Barcode display
+    String barcodeDisplay = _getDisplaySerial(ticket);
 
     return Card(
       elevation: 2,
@@ -360,7 +365,7 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
             const Divider(height: 20),
 
             // Details Rows
-            _buildDetailRow('Serial #:', serialDisplay, isBold: true),
+            _buildDetailRow('Barcode #:', barcodeDisplay, isBold: true),
             _buildDetailRow('Item:', '$itemName ($itemSku)'),
             _buildDetailRow('Quantity:', quantity),
             _buildDetailRow('Sent From:', sentFromLocationName),
@@ -680,6 +685,84 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
     );
   }
 
+  Widget _buildDisposeButton(RepairProvider repairProvider) {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: repairProvider.isLoading ? null : () => _showDisposeDialog(repairProvider),
+        icon: const Icon(Icons.delete_forever_outlined, color: Colors.red),
+        label: const Text(
+          'Cannot Be Repaired — Send to Dispose',
+          style: TextStyle(color: Colors.red, fontWeight: FontWeight.w600),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: Colors.red),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showDisposeDialog(RepairProvider repairProvider) async {
+    final noteController = TextEditingController();
+    String selectedReason = 'Beyond Repair';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setInnerState) => AlertDialog(
+          title: const Text('Send to Dispose', style: TextStyle(color: Colors.red)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This item cannot be repaired and will be submitted for disposal approval.'),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: selectedReason,
+                decoration: const InputDecoration(labelText: 'Reason', border: OutlineInputBorder()),
+                items: ['Beyond Repair', 'Damaged', 'Obsolete', 'Lost']
+                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                    .toList(),
+                onChanged: (v) => setInnerState(() => selectedReason = v!),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: noteController,
+                decoration: const InputDecoration(labelText: 'Note (Optional)', border: OutlineInputBorder()),
+                maxLines: 2,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+              child: const Text('Confirm Dispose'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      final success = await repairProvider.disposeFromRepair(
+        repairTicketId: _selectedRepairTicketId!,
+        reason: selectedReason,
+        note: noteController.text.isNotEmpty ? noteController.text : null,
+      );
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Item submitted for disposal approval.'),
+          backgroundColor: Colors.orange,
+        ));
+        Navigator.pop(context);
+      }
+    }
+  }
+
   Widget _buildSubmitButton(RepairProvider repairProvider) {
     bool isDisabled = repairProvider.sentRepairTickets.isEmpty || repairProvider.isLoading;
 
@@ -719,18 +802,17 @@ class _ReturnFromRepairScreenState extends State<ReturnFromRepairScreen> {
     }
   }
 
-  // Extracts displayable serial number from ticket
+  // Show barcode# if available, otherwise ticket ID
   String _getDisplaySerial(Map<String, dynamic> ticket) {
-    String? serial = ticket['serialNumber'];
-    String id = ticket['_id'] ?? '';
+    final itemId = ticket['itemId'];
+    final barcode = itemId is Map ? itemId['barcode']?.toString() : null;
+    final String id = ticket['_id'] ?? '';
+    final String shortId = id.length > 6 ? id.substring(id.length - 6).toUpperCase() : id;
 
-    if (serial != null && serial.isNotEmpty) {
-      return 'SN: $serial';
-    } else {
-      // Fallback to Ticket ID if no custom serial provided
-      String shortId = id.length > 6 ? id.substring(id.length - 6).toUpperCase() : id;
-      return 'TICKET #$shortId';
+    if (barcode != null && barcode.isNotEmpty) {
+      return 'Barcode: $barcode';
     }
+    return 'TICKET #$shortId';
   }
 
   // Resolves Location Name from ID object or ID string

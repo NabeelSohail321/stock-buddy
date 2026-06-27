@@ -1,4 +1,6 @@
 import 'package:flutter/foundation.dart';
+
+import '../core/app_exception.dart';
 import '../services/repair_service.dart';
 
 class RepairProvider with ChangeNotifier {
@@ -15,8 +17,9 @@ class RepairProvider with ChangeNotifier {
   String get error => _error;
   String get successMessage => _successMessage;
   List<dynamic> get repairTickets => _repairTickets;
+  List<dynamic> get sentRepairTickets =>
+      _repairTickets.where((t) => t['status'] == 'sent').toList();
 
-  // Existing sendToRepair method...
   Future<bool> sendToRepair({
     required String itemId,
     required String locationId,
@@ -26,11 +29,7 @@ class RepairProvider with ChangeNotifier {
     String? note,
     String? photo,
   }) async {
-    _isLoading = true;
-    _error = '';
-    _successMessage = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       await _repairService.sendToRepair(
         itemId: itemId,
@@ -41,48 +40,41 @@ class RepairProvider with ChangeNotifier {
         note: note,
         photo: photo,
       );
-
       _successMessage = 'Item sent for repair successfully';
-      _isLoading = false;
-      notifyListeners();
+      _setLoading(false);
       return true;
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'An unexpected error occurred. Please try again.';
+      _setLoading(false);
       return false;
     }
   }
 
-  // New method to fetch repair tickets
   Future<void> fetchRepairTickets() async {
-    _isLoading = true;
-    _error = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       _repairTickets = await _repairService.getRepairTickets();
-      _isLoading = false;
-      notifyListeners();
+      _setLoading(false);
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'Failed to load repair tickets. Please try again.';
+      _setLoading(false);
     }
   }
 
-  // New method to return from repair
   Future<bool> returnFromRepair({
     required String repairTicketId,
     required String locationId,
     String? note,
     List<Map<String, dynamic>>? checklist,
   }) async {
-    _isLoading = true;
-    _error = '';
-    _successMessage = '';
-    notifyListeners();
-
+    _setLoading(true);
     try {
       await _repairService.returnFromRepair(
         repairTicketId: repairTicketId,
@@ -90,21 +82,51 @@ class RepairProvider with ChangeNotifier {
         note: note,
         checklist: checklist,
       );
-
       _successMessage = 'Item returned from repair successfully';
-
-      // Remove the returned ticket from the list
-      _repairTickets.removeWhere((ticket) => ticket['_id'] == repairTicketId);
-
-      _isLoading = false;
-      notifyListeners();
+      _repairTickets.removeWhere((t) => t['_id'] == repairTicketId);
+      _setLoading(false);
       return true;
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = 'An unexpected error occurred. Please try again.';
+      _setLoading(false);
       return false;
     }
+  }
+
+  Future<bool> disposeFromRepair({
+    required String repairTicketId,
+    String? reason,
+    String? note,
+  }) async {
+    _setLoading(true);
+    try {
+      await _repairService.disposeFromRepair(
+        repairTicketId: repairTicketId,
+        reason: reason,
+        note: note,
+      );
+      _repairTickets.removeWhere((t) => t['_id'] == repairTicketId);
+      _setLoading(false);
+      return true;
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
+    } catch (e) {
+      _error = 'An unexpected error occurred. Please try again.';
+      _setLoading(false);
+      return false;
+    }
+  }
+
+  void _setLoading(bool loading) {
+    _isLoading = loading;
+    if (loading) _error = '';
+    notifyListeners();
   }
 
   void clearError() {
@@ -115,10 +137,5 @@ class RepairProvider with ChangeNotifier {
   void clearSuccessMessage() {
     _successMessage = '';
     notifyListeners();
-  }
-
-  // Helper method to get only sent repair tickets (not returned)
-  List<dynamic> get sentRepairTickets {
-    return _repairTickets.where((ticket) => ticket['status'] == 'sent').toList();
   }
 }

@@ -214,7 +214,7 @@ class _SplashScreenState extends State<SplashScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Text(
-        '© 2025 Stock Buddy. All rights reserved.',
+        '© 2025 Inventory Hub. All rights reserved.',
         style: TextStyle(
           color: Colors.white.withOpacity(0.6),
           fontSize: 12,
