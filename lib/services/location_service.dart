@@ -86,7 +86,10 @@ class LocationService {
         headers: _headers,
       ),
     );
-    return (result as List<dynamic>)
+    final list = result is List
+        ? result
+        : (result as Map<String, dynamic>)['locations'] as List<dynamic>? ?? [];
+    return list
         .map((e) => Location.fromJson(e as Map<String, dynamic>))
         .toList();
   }

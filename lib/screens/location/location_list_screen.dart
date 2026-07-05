@@ -37,7 +37,8 @@ class _LocationListScreenState extends State<LocationListScreen> {
 
     // Check if user is authenticated and has admin role
     final isAuthenticated = authProvider.token != null && authProvider.token!.isNotEmpty;
-    final isAdmin = authProvider.currentUser?.role == 'admin';
+    final role = authProvider.currentUser?.role;
+    final isAdmin = role == 'admin' || role == 'super_admin';
 
     return Scaffold(
       appBar: AppBar(
@@ -87,7 +88,7 @@ class _LocationListScreenState extends State<LocationListScreen> {
       );
     }
 
-    if (locationProvider.error != null) {
+    if (locationProvider.error.isNotEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -106,7 +107,7 @@ class _LocationListScreenState extends State<LocationListScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32.0),
               child: Text(
-                locationProvider.error!,
+                locationProvider.error,
                 textAlign: TextAlign.center,
                 style: const TextStyle(fontSize: 14, color: Colors.grey),
               ),

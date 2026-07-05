@@ -118,7 +118,7 @@ class _SplashScreenState extends State<SplashScreen> {
       text: TextSpan(
         children: [
           TextSpan(
-            text: 'Stock ',
+            text: 'Inventory ',
             style: TextStyle(
               fontSize: fontSize,
               fontWeight: FontWeight.bold,
@@ -127,7 +127,7 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
           ),
           TextSpan(
-            text: 'Buddy',
+            text: 'Hub',
             style: TextStyle(
               fontSize: fontSize,
               fontWeight: FontWeight.w300,
