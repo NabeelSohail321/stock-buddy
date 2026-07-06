@@ -90,7 +90,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   const SizedBox(height: 8),
 
                   Text(
-                    'Join Stocky Buddy today',
+                    'Join Inventory Hub today',
                     style: TextStyle(
                       fontSize: isDesktop ? 16 : 14,
                       color: Colors.grey.shade600,
