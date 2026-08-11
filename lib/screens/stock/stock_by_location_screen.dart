@@ -212,7 +212,9 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
                                             ),
                                           ),
                                           Text(
-                                            'SKU: $sku',
+                                            barcode != null && barcode.isNotEmpty
+                                                ? 'Barcode: $barcode'
+                                                : 'SKU: $sku',
                                             style: const TextStyle(
                                               color: Colors.grey,
                                               fontSize: 12,
@@ -248,8 +250,6 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
                                   _buildStockDetailRow('Model:', modelNumber),
                                 if (serialNumber != null && serialNumber.isNotEmpty)
                                   _buildStockDetailRow('Serial:', serialNumber),
-                                if (barcode != null && barcode.isNotEmpty)
-                                  _buildStockDetailRow('Barcode:', barcode),
                                 _buildStockDetailRow('Quantity:', '$quantity $unit'),
                                 _buildStockDetailRow('Threshold:', '$threshold $unit'),
                                 _buildStockDetailRow('Status:', _getStockStatusText(status).toUpperCase()),
@@ -410,7 +410,7 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
                                   ),
                                   const SizedBox(height: 6),
                                   Text(
-                                    'SKU: ${item.sku ?? "N/A"}',
+                                    'Barcode: ${(item.barcode != null && item.barcode!.isNotEmpty) ? item.barcode : "N/A"}',
                                     style: TextStyle(
                                       fontSize: 16,
                                       color: Colors.grey[600],
@@ -462,9 +462,9 @@ class _StockByLocationScreenState extends State<StockByLocationScreen> {
                           '$currentQuantity ${item.unit ?? "units"}'
                         ),
                         _buildDetailRow(
-                          Icons.warehouse, 
-                          'Total Stock (All)', 
-                          '${item.totalStock ?? 0} ${item.unit ?? "units"}'
+                          Icons.warehouse,
+                          'Total Stock (All)',
+                          '${item.locations.fold(0, (sum, loc) => sum + loc.quantity)} ${item.unit ?? "units"}',
                         ),
                         _buildDetailRow(
                           Icons.notification_important, 

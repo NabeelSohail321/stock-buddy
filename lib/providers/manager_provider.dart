@@ -84,7 +84,7 @@ class ManagerProvider with ChangeNotifier {
   }) async {
     _setLoading(true);
     try {
-      await _service.updateManager(
+      final result = await _service.updateManager(
         managerId: managerId,
         name: name,
         email: email,
@@ -93,7 +93,34 @@ class ManagerProvider with ChangeNotifier {
         notificationPreferences: notificationPreferences,
         isActive: isActive,
       );
-      await fetchManagers();
+      // GET /managers/:id returns the manager unwrapped. Use it for most fields
+      // (especially populated location names), but force-apply the submitted
+      // notificationPreferences so the UI always reflects what the user saved,
+      // even if the backend subdocument merge doesn't persist correctly.
+      final fromApi = Manager.fromJson(result);
+      final updated = Manager(
+        id: fromApi.id,
+        name: fromApi.name,
+        email: fromApi.email,
+        phone: fromApi.phone,
+        assignedLocationIds: fromApi.assignedLocationIds,
+        assignedLocationNames: fromApi.assignedLocationNames,
+        isActive: fromApi.isActive,
+        notificationPreferences: ManagerNotificationPreferences(
+          stock: notificationPreferences['stock'] ?? fromApi.notificationPreferences.stock,
+          repair: notificationPreferences['repair'] ?? fromApi.notificationPreferences.repair,
+          disposal: notificationPreferences['disposal'] ?? fromApi.notificationPreferences.disposal,
+          transfer: notificationPreferences['transfer'] ?? fromApi.notificationPreferences.transfer,
+        ),
+      );
+      final idx = _managers.indexWhere((m) => m.id == managerId);
+      if (idx != -1) {
+        _managers[idx] = updated;
+      } else {
+        _managers.add(updated);
+      }
+      _isLoading = false;
+      notifyListeners();
       return true;
     } on AppException catch (e) {
       _error = e.message;

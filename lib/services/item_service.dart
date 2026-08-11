@@ -208,6 +208,13 @@ class ItemsService {
     return Item.fromJson(result as Map<String, dynamic>);
   }
 
+  Future<void> deleteItem(String id) async {
+    await _send((token) => client.delete(
+          Uri.parse('${ApiConstants.baseUrl}/items/$id'),
+          headers: {'Authorization': 'Bearer $token'},
+        ));
+  }
+
   Future<DashboardData> getDashboardData() async {
     final result = await _send((token) => client.get(
           Uri.parse('${ApiConstants.baseUrl}/dashboard'),

@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.client" "\0"
-            VALUE "FileDescription", "stock_buddy" "\0"
+            VALUE "FileDescription", "Inventory Hub" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "stock_buddy" "\0"
+            VALUE "InternalName", "Inventory Hub" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 com.client. All rights reserved." "\0"
             VALUE "OriginalFilename", "stock_buddy.exe" "\0"
-            VALUE "ProductName", "stock_buddy" "\0"
+            VALUE "ProductName", "Inventory Hub" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

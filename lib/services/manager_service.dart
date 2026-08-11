@@ -117,21 +117,39 @@ class ManagerService {
     },
     bool isActive = true,
   }) async {
-    final result = await _send(
+    // 1. Update general fields (name, email, phone, isActive, notificationPreferences)
+    await _send(
       () => http.put(
         Uri.parse('${ApiConstants.baseUrl}/managers/$managerId'),
         headers: _headers,
         body: json.encode({
           'name': name,
           'email': email,
-          if (phone != null) 'phone': phone,
-          'assignedLocationIds': assignedLocationIds,
+          if (phone != null && phone.isNotEmpty) 'phone': phone,
           'notificationPreferences': notificationPreferences,
           'isActive': isActive,
         }),
       ),
     );
-    return result as Map<String, dynamic>;
+
+    // 2. Update locations via the dedicated endpoint
+    await _send(
+      () => http.put(
+        Uri.parse('${ApiConstants.baseUrl}/managers/$managerId/locations'),
+        headers: _headers,
+        body: json.encode({'locationIds': assignedLocationIds}),
+      ),
+    );
+
+    // 3. Fetch the manager by ID for the authoritative state after all writes settle.
+    //    The GET response is a plain manager object (not wrapped in { manager: ... }).
+    final fresh = await _send(
+      () => http.get(
+        Uri.parse('${ApiConstants.baseUrl}/managers/$managerId'),
+        headers: {'Authorization': 'Bearer $token'},
+      ),
+    );
+    return fresh as Map<String, dynamic>;
   }
 
   Future<List<dynamic>> getManagersByLocation(String locationId) async {

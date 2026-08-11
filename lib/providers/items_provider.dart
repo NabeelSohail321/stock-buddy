@@ -270,6 +270,25 @@ class ItemsProvider with ChangeNotifier {
     }
   }
 
+  Future<bool> deleteItem(String id) async {
+    _setLoading(true);
+    try {
+      await _itemsService.deleteItem(id);
+      _items.removeWhere((i) => i.id == id);
+      _applySearchFilter();
+      _setLoading(false);
+      return true;
+    } on AppException catch (e) {
+      _error = e.message;
+      _setLoading(false);
+      return false;
+    } catch (_) {
+      _error = 'Failed to delete item. Please try again.';
+      _setLoading(false);
+      return false;
+    }
+  }
+
   List<ItemLocation> getLocationsForItem(String itemId) {
     try {
       return _items.firstWhere((i) => i.id == itemId).locations;

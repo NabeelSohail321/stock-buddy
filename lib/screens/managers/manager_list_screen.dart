@@ -37,7 +37,10 @@ class _ManagerListScreenState extends State<ManagerListScreen> {
     Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => AddEditManagerScreen(manager: manager)),
-    ).then((_) => _refresh());
+    );
+    // No _refresh() here — updateManager() already updates _managers[idx] in place.
+    // Calling _refresh() would overwrite the locally-correct data with potentially
+    // stale backend data (e.g. if the backend subdocument merge has an issue).
   }
 
   @override
