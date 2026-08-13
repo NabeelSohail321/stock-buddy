@@ -21,14 +21,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   final ScrollController _scrollController = ScrollController();
   final TextEditingController _searchController = TextEditingController();
 
-  // Category / server-side filters
+  // All filters are server-side — sent directly in each API request.
   String? _selectedCategory;
   String? _selectedTransactionType;
   String? _selectedStatus;
   String? _selectedDatePreset;
   DateTimeRange? _selectedDateRange;
-
-  // Client-side filters
   String? _selectedLocationId;
   String? _selectedManagerId;
   String? _selectedItemId;
@@ -65,13 +63,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   Future<void> _loadAllData() async {
     await Future.wait([
       context.read<TransactionProvider>().loadAllTransactions(
-            category: _apiCategory,
-            type: _selectedTransactionType,
-            status: _selectedStatus,
+            category:   _apiCategory,
+            type:       _selectedTransactionType,
+            status:     _selectedStatus,
             datePreset: _selectedDatePreset,
-            search: _searchController.text.isNotEmpty ? _searchController.text : null,
-            startDate: _selectedDateRange?.start.toIso8601String(),
-            endDate: _selectedDateRange?.end.toIso8601String(),
+            search:     _searchController.text.isNotEmpty ? _searchController.text : null,
+            startDate:  _selectedDateRange?.start.toIso8601String(),
+            endDate:    _selectedDateRange?.end.toIso8601String(),
+            locationId: _selectedLocationId,
+            managerId:  _selectedManagerId,
+            itemId:     _selectedItemId,
           ),
       context.read<LocationProvider>().loadLocations(),
       context.read<ManagerProvider>().fetchManagers(),
@@ -80,10 +81,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   void _scrollListener() {
     final pos = _scrollController.position;
-    // maxScrollExtent == 0 means the list fits on screen; skip auto-load
-    // to avoid an infinite trigger on short (client-filtered) lists.
-    if (pos.maxScrollExtent > 0 &&
-        pos.pixels >= pos.maxScrollExtent - 200) {
+    if (pos.maxScrollExtent > 0 && pos.pixels >= pos.maxScrollExtent - 200) {
       final transProv = context.read<TransactionProvider>();
       if (transProv.hasMore && !transProv.isLoading) {
         transProv.loadMoreTransactions();
@@ -91,86 +89,46 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
+  /// Sends all active filters to the server and reloads the list.
   void _applyFilters() {
     context.read<TransactionProvider>().loadAllTransactions(
-          category: _apiCategory,
-          type: _selectedTransactionType,
-          status: _selectedStatus,
+          category:   _apiCategory,
+          type:       _selectedTransactionType,
+          status:     _selectedStatus,
           datePreset: _selectedDatePreset,
-          search: _searchController.text.isNotEmpty ? _searchController.text : null,
-          startDate: _selectedDateRange?.start.toIso8601String(),
-          endDate: _selectedDateRange?.end != null
+          search:     _searchController.text.isNotEmpty ? _searchController.text : null,
+          startDate:  _selectedDateRange?.start.toIso8601String(),
+          endDate:    _selectedDateRange?.end != null
               ? _selectedDateRange!.end
                   .add(const Duration(hours: 23, minutes: 59, seconds: 59))
                   .toIso8601String()
               : null,
+          locationId: _selectedLocationId,
+          managerId:  _selectedManagerId,
+          itemId:     _selectedItemId,
         );
   }
 
-  /// Client-side filter applied on top of server-fetched list.
-  List<Transaction> _applyClientFilters(
-    List<Transaction> all,
-    List<Manager> managers,
-  ) {
-    if (_selectedLocationId == null && _selectedManagerId == null && _selectedItemId == null) return all;
-
-    Set<String>? managerLocationIds;
-    if (_selectedManagerId != null) {
-      final mgr = managers.where((m) => m.id == _selectedManagerId).firstOrNull;
-      if (mgr != null) {
-        managerLocationIds = mgr.assignedLocationIds.toSet();
-      }
-    }
-
-    return all.where((tx) {
-      // Item filter: transaction must be for the selected item
-      if (_selectedItemId != null && tx.itemId != _selectedItemId) return false;
-
-      // Location filter: transaction must involve the selected location
-      if (_selectedLocationId != null) {
-        final matchFrom = tx.fromLocationId == _selectedLocationId;
-        final matchTo = tx.toLocationId == _selectedLocationId;
-        if (!matchFrom && !matchTo) return false;
-      }
-
-      // Manager filter: transaction must be assigned to this manager directly,
-      // or involve one of the manager's assigned locations as a fallback.
-      if (_selectedManagerId != null) {
-        if (tx.managerId == _selectedManagerId) return true;
-        if (managerLocationIds != null) {
-          final matchFrom = tx.fromLocationId != null && managerLocationIds.contains(tx.fromLocationId);
-          final matchTo = tx.toLocationId != null && managerLocationIds.contains(tx.toLocationId);
-          if (!matchFrom && !matchTo) return false;
-        }
-      }
-
-      return true;
-    }).toList();
-  }
-
-  bool get _hasActiveClientFilters =>
-      _selectedLocationId != null || _selectedManagerId != null || _selectedItemId != null;
-
   int get _activeFilterCount {
     int count = 0;
-    if (_selectedStatus != null) count++;
-    if (_selectedDatePreset != null) count++;
-    if (_selectedDateRange != null) count++;
-    if (_selectedLocationId != null) count++;
-    if (_selectedManagerId != null) count++;
-    if (_selectedItemId != null) count++;
+    if (_selectedStatus != null)      count++;
+    if (_selectedDatePreset != null)  count++;
+    if (_selectedDateRange != null)   count++;
+    if (_selectedLocationId != null)  count++;
+    if (_selectedManagerId != null)   count++;
+    if (_selectedItemId != null)      count++;
     return count;
   }
 
   void _clearAllFilters() {
     setState(() {
       _selectedTransactionType = null;
-      _selectedStatus = null;
-      _selectedDatePreset = null;
-      _selectedDateRange = null;
-      _selectedLocationId = null;
-      _selectedManagerId = null;
-      _selectedItemId = null;
+      _selectedStatus          = null;
+      _selectedDatePreset      = null;
+      _selectedDateRange       = null;
+      _selectedLocationId      = null;
+      _selectedManagerId       = null;
+      _selectedItemId          = null;
       _searchController.clear();
     });
     _applyFilters();
@@ -333,31 +291,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   // ─── Transaction list ─────────────────────────────────────────────────────
 
-  /// Derives a sorted unique item list from loaded transactions for the Item filter chip.
-  List<({String id, String name})> _buildItemList(List<Transaction> transactions) {
-    final seen = <String>{};
-    final result = <({String id, String name})>[];
-    for (final tx in transactions) {
-      if (tx.itemId != null && seen.add(tx.itemId!)) {
-        result.add((id: tx.itemId!, name: tx.itemName));
-      }
-    }
-    result.sort((a, b) => a.name.compareTo(b.name));
-    return result;
-  }
-
   Widget _buildTransactionList() {
     return Consumer3<TransactionProvider, LocationProvider, ManagerProvider>(
       builder: (context, transProv, locProv, mgrProv, _) {
-        final itemList = _buildItemList(transProv.allTransactions);
-        final filtered =
-            _applyClientFilters(transProv.allTransactions, mgrProv.managers);
-
         if (transProv.errorMessage.isNotEmpty &&
             transProv.allTransactions.isEmpty) {
           return Column(
             children: [
-              _buildAdvancedFilterBar(locProv.locations, mgrProv.managers, itemList),
+              _buildAdvancedFilterBar(locProv.locations, mgrProv.managers),
               Expanded(
                 child: Center(
                   child: Column(
@@ -383,31 +324,27 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           );
         }
 
+        final transactions = transProv.allTransactions;
+
         return Column(
           children: [
-            _buildAdvancedFilterBar(locProv.locations, mgrProv.managers, itemList),
-
-            // Client-filter result count bar
-            if (_hasActiveClientFilters)
-              _buildClientFilterResultBar(filtered.length,
-                  transProv.allTransactions.length),
-
+            _buildAdvancedFilterBar(locProv.locations, mgrProv.managers),
             const Divider(height: 1),
-
             Expanded(
-              child: filtered.isEmpty && !transProv.isLoading
+              child: transactions.isEmpty && !transProv.isLoading
                   ? _buildEmptyState()
                   : RefreshIndicator(
                       onRefresh: _loadAllData,
                       child: ListView.builder(
                         controller: _scrollController,
                         padding: const EdgeInsets.all(12),
-                        itemCount: filtered.length + 1,
+                        itemCount: transactions.length + 1,
                         itemBuilder: (context, index) {
-                          if (index == filtered.length) {
+                          if (index == transactions.length) {
                             return _buildLoadMoreIndicator(transProv);
                           }
-                          return _buildTransactionCard(filtered[index], locProv, mgrProv);
+                          return _buildTransactionCard(
+                              transactions[index], locProv, mgrProv);
                         },
                       ),
                     ),
@@ -415,45 +352,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ],
         );
       },
-    );
-  }
-
-  Widget _buildClientFilterResultBar(int shown, int total) {
-    return Container(
-      color: Colors.blue.shade50,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Row(
-        children: [
-          Icon(Icons.filter_alt, size: 14, color: Colors.blue.shade700),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              'Showing $shown of $total loaded transactions',
-              style:
-                  TextStyle(fontSize: 12, color: Colors.blue.shade700),
-            ),
-          ),
-          TextButton(
-            style: TextButton.styleFrom(
-              padding: EdgeInsets.zero,
-              minimumSize: const Size(0, 0),
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onPressed: () {
-              setState(() {
-                _selectedLocationId = null;
-                _selectedManagerId = null;
-                _selectedItemId = null;
-              });
-            },
-            child: Text('Clear',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.blue.shade700,
-                    fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
     );
   }
 
@@ -465,22 +363,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           Icon(Icons.receipt_long_outlined, size: 72, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
-            _hasActiveClientFilters
-                ? 'No transactions match the selected filters'
-                : 'No transactions found',
+            'No transactions found',
             style: TextStyle(
                 fontSize: 16,
                 color: Colors.grey[600],
                 fontWeight: FontWeight.w500),
           ),
-          if (_hasActiveClientFilters) ...[
+          if (_activeFilterCount > 0) ...[
             const SizedBox(height: 12),
             TextButton.icon(
-              onPressed: () => setState(() {
-                _selectedLocationId = null;
-                _selectedManagerId = null;
-                _selectedItemId = null;
-              }),
+              onPressed: _clearAllFilters,
               icon: const Icon(Icons.clear),
               label: const Text('Clear filters'),
             ),
@@ -493,7 +385,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   // ─── Advanced filter bar ──────────────────────────────────────────────────
 
   Widget _buildAdvancedFilterBar(
-      List<Location> locations, List<Manager> managers, List<({String id, String name})> items) {
+      List<Location> locations, List<Manager> managers) {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
       color: Colors.white,
@@ -526,7 +418,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
           const SizedBox(height: 10),
 
-          // Scrollable chip row — server filters + client filters together
+          // Scrollable chip row — all server-side filters
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
@@ -562,7 +454,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
                 const SizedBox(width: 8),
 
-                // Location filter (client-side)
+                // Location filter — server-side
                 _dropdownChipDynamic<Location>(
                   hint: 'Location',
                   value: _selectedLocationId,
@@ -571,12 +463,14 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   itemLabel: (l) => l.name,
                   icon: Icons.location_on_outlined,
                   color: Colors.teal,
-                  onChanged: (val) =>
-                      setState(() => _selectedLocationId = val),
+                  onChanged: (val) {
+                    setState(() => _selectedLocationId = val);
+                    _applyFilters();
+                  },
                 ),
                 const SizedBox(width: 8),
 
-                // Manager filter (client-side)
+                // Manager filter — server-side
                 _dropdownChipDynamic<Manager>(
                   hint: 'Manager',
                   value: _selectedManagerId,
@@ -585,22 +479,15 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   itemLabel: (m) => m.name,
                   icon: Icons.manage_accounts_outlined,
                   color: Colors.purple,
-                  onChanged: (val) =>
-                      setState(() => _selectedManagerId = val),
+                  onChanged: (val) {
+                    setState(() => _selectedManagerId = val);
+                    _applyFilters();
+                  },
                 ),
                 const SizedBox(width: 8),
 
-                // Item filter (client-side)
-                _dropdownChipDynamic<({String id, String name})>(
-                  hint: 'Item',
-                  value: _selectedItemId,
-                  items: items,
-                  itemId: (i) => i.id,
-                  itemLabel: (i) => i.name,
-                  icon: Icons.inventory_2_outlined,
-                  color: Colors.indigo,
-                  onChanged: (val) => setState(() => _selectedItemId = val),
-                ),
+                // Item filter — server-side (built from loaded transactions)
+                _buildItemFilterChip(),
                 const SizedBox(width: 8),
 
                 // Custom date range (hidden when preset chosen)
@@ -641,7 +528,37 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  /// Dropdown chip for simple string lists (server-side filters).
+  /// Item filter chip — built from unique items in the currently loaded list.
+  Widget _buildItemFilterChip() {
+    return Consumer<TransactionProvider>(
+      builder: (_, transProv, __) {
+        final seen = <String>{};
+        final items = <({String id, String name})>[];
+        for (final tx in transProv.allTransactions) {
+          if (tx.itemId != null && seen.add(tx.itemId!)) {
+            items.add((id: tx.itemId!, name: tx.itemName));
+          }
+        }
+        items.sort((a, b) => a.name.compareTo(b.name));
+
+        return _dropdownChipDynamic<({String id, String name})>(
+          hint: 'Item',
+          value: _selectedItemId,
+          items: items,
+          itemId: (i) => i.id,
+          itemLabel: (i) => i.name,
+          icon: Icons.inventory_2_outlined,
+          color: Colors.indigo,
+          onChanged: (val) {
+            setState(() => _selectedItemId = val);
+            _applyFilters();
+          },
+        );
+      },
+    );
+  }
+
+  /// Dropdown chip for simple string lists.
   Widget _dropdownChip({
     required String label,
     required String? value,
@@ -666,10 +583,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           isDense: true,
           items: [
             DropdownMenuItem(
-                value: null, child: Text('All $hint', style: const TextStyle(fontSize: 13))),
+                value: null,
+                child: Text('All $hint', style: const TextStyle(fontSize: 13))),
             ...items.map((e) => DropdownMenuItem(
                 value: e,
-                child: Text(itemLabel(e), style: const TextStyle(fontSize: 13)))),
+                child:
+                    Text(itemLabel(e), style: const TextStyle(fontSize: 13)))),
           ],
           onChanged: onChanged,
         ),
@@ -677,7 +596,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
-  /// Dropdown chip for typed model lists (client-side filters).
+  /// Dropdown chip for typed model lists.
   Widget _dropdownChipDynamic<T>({
     required String hint,
     required String? value,
@@ -695,8 +614,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       decoration: BoxDecoration(
         color: active ? color.withValues(alpha: 0.12) : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: active ? color : Colors.grey.shade300),
+        border: Border.all(color: active ? color : Colors.grey.shade300),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
@@ -711,9 +629,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
           isDense: true,
           isExpanded: true,
-          // Always show icon in the chip button regardless of selection state.
           selectedItemBuilder: (context) => [
-            // "All X" row (null item)
             Row(children: [
               Icon(icon, size: 14, color: Colors.grey[600]),
               const SizedBox(width: 4),
@@ -723,7 +639,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     overflow: TextOverflow.ellipsis),
               ),
             ]),
-            // One row per model item
             ...items.map((item) => Row(children: [
                   Icon(icon, size: 14, color: color),
                   const SizedBox(width: 4),
@@ -773,14 +688,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     child: const Text('Load More'),
                   )
                 : Text('All transactions loaded',
-                    style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                    style:
+                        TextStyle(color: Colors.grey[500], fontSize: 13)),
       ),
     );
   }
 
-  // ─── Transaction card (compact summary — tap for full detail) ────────────
+  // ─── Transaction card ─────────────────────────────────────────────────────
 
-  Widget _buildTransactionCard(Transaction tx, LocationProvider locProv, ManagerProvider mgrProv) {
+  Widget _buildTransactionCard(
+      Transaction tx, LocationProvider locProv, ManagerProvider mgrProv) {
     String locName(String? id) {
       if (id == null) return '';
       return locProv.getLocationById(id)?.name ?? '';
@@ -801,7 +718,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
             children: [
-              // Color accent bar
               Container(
                 width: 4,
                 height: 52,
@@ -815,7 +731,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Type badge + status + date
                     Row(
                       children: [
                         _typeChip(tx.type, tx.displayType),
@@ -824,20 +739,20 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         const Spacer(),
                         Text(
                           DateFormat('MMM d, HH:mm').format(tx.createdAt),
-                          style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+                          style:
+                              TextStyle(fontSize: 11, color: Colors.grey[500]),
                         ),
                       ],
                     ),
                     const SizedBox(height: 6),
-                    // Item name
                     Text(
                       tx.itemName,
-                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 2),
-                    // Qty + location
                     Text(
                       'Qty: ${tx.quantity}  ·  $locationLine',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
@@ -858,7 +773,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   // ─── Full detail bottom sheet ─────────────────────────────────────────────
 
-  void _showTransactionDetail(Transaction tx, LocationProvider locProv, ManagerProvider mgrProv) {
+  void _showTransactionDetail(
+      Transaction tx, LocationProvider locProv, ManagerProvider mgrProv) {
     String locName(String? id) {
       if (id == null) return '';
       return locProv.getLocationById(id)?.name ?? '';
@@ -867,7 +783,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final fromLocName = tx.fromLocation ?? locName(tx.fromLocationId);
     final toLocName = tx.toLocation ?? locName(tx.toLocationId);
     final managerName = tx.managerId != null
-        ? mgrProv.managers.where((m) => m.id == tx.managerId).firstOrNull?.name
+        ? mgrProv.managers
+            .where((m) => m.id == tx.managerId)
+            .firstOrNull
+            ?.name
         : null;
 
     showModalBottomSheet(
@@ -885,7 +804,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
           child: Column(
             children: [
-              // Handle
               Container(
                 margin: const EdgeInsets.only(top: 10, bottom: 4),
                 width: 40,
@@ -895,7 +813,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              // Header
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: Row(
@@ -912,84 +829,99 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 ),
               ),
               const Divider(height: 1),
-              // Content
               Expanded(
                 child: ListView(
                   controller: scrollCtrl,
                   padding: const EdgeInsets.all(16),
                   children: [
-                    // Item section
                     _sectionHeader('Item'),
                     _detailRow(Icons.inventory_2_outlined, 'Name', tx.itemName),
-                    if (tx.itemSku != null) _detailRow(Icons.tag, 'SKU', tx.itemSku!),
+                    if (tx.itemSku != null)
+                      _detailRow(Icons.tag, 'SKU', tx.itemSku!),
                     if (tx.itemModelNumber?.isNotEmpty == true)
-                      _detailRow(Icons.computer_outlined, 'Model', tx.itemModelNumber!),
+                      _detailRow(
+                          Icons.computer_outlined, 'Model', tx.itemModelNumber!),
                     if (tx.itemSerialNumber?.isNotEmpty == true)
-                      _detailRow(Icons.pin_outlined, 'Item Serial', tx.itemSerialNumber!),
+                      _detailRow(
+                          Icons.pin_outlined, 'Item Serial', tx.itemSerialNumber!),
                     if (tx.itemPurchaseDate?.isNotEmpty == true)
-                      _detailRow(Icons.calendar_today_outlined, 'Purchased', _formatItemDate(tx.itemPurchaseDate!)),
+                      _detailRow(Icons.calendar_today_outlined, 'Purchased',
+                          _formatItemDate(tx.itemPurchaseDate!)),
                     if (tx.itemUnit?.isNotEmpty == true)
                       _detailRow(Icons.scale_outlined, 'Unit', tx.itemUnit!),
-                    _detailRow(Icons.numbers_outlined, 'Quantity', '${tx.quantity}'),
+                    _detailRow(
+                        Icons.numbers_outlined, 'Quantity', '${tx.quantity}'),
                     const SizedBox(height: 16),
 
-                    // Location section
                     _sectionHeader('Location'),
                     if (tx.type == 'TRANSFER') ...[
-                      _detailRow(Icons.output_outlined, 'From', fromLocName.isNotEmpty ? fromLocName : '—'),
-                      _detailRow(Icons.input_outlined, 'To', toLocName.isNotEmpty ? toLocName : '—'),
+                      _detailRow(Icons.output_outlined, 'From',
+                          fromLocName.isNotEmpty ? fromLocName : '—'),
+                      _detailRow(Icons.input_outlined, 'To',
+                          toLocName.isNotEmpty ? toLocName : '—'),
                     ] else if (tx.type == 'ADD') ...[
-                      _detailRow(Icons.location_on_outlined, 'Location',
-                          (toLocName.isNotEmpty ? toLocName : fromLocName).isNotEmpty
+                      _detailRow(
+                          Icons.location_on_outlined,
+                          'Location',
+                          (toLocName.isNotEmpty ? toLocName : fromLocName)
+                                  .isNotEmpty
                               ? (toLocName.isNotEmpty ? toLocName : fromLocName)
                               : '—'),
                     ] else ...[
                       if (fromLocName.isNotEmpty)
-                        _detailRow(Icons.location_on_outlined, 'From', fromLocName),
+                        _detailRow(
+                            Icons.location_on_outlined, 'From', fromLocName),
                       if (toLocName.isNotEmpty)
                         _detailRow(Icons.location_on_outlined, 'To', toLocName),
                     ],
                     const SizedBox(height: 16),
 
-                    // Details section
                     if (tx.vendorName?.isNotEmpty == true ||
                         tx.serialNumber?.isNotEmpty == true ||
                         tx.reason?.isNotEmpty == true ||
                         tx.note?.isNotEmpty == true) ...[
                       _sectionHeader('Details'),
                       if (tx.vendorName?.isNotEmpty == true)
-                        _detailRow(Icons.business_outlined, 'Vendor', tx.vendorName!),
+                        _detailRow(
+                            Icons.business_outlined, 'Vendor', tx.vendorName!),
                       if (tx.serialNumber?.isNotEmpty == true)
-                        _detailRow(Icons.pin_outlined, 'Serial No', tx.serialNumber!),
+                        _detailRow(
+                            Icons.pin_outlined, 'Serial No', tx.serialNumber!),
                       if (tx.reason?.isNotEmpty == true)
-                        _detailRow(Icons.help_outline, 'Reason', tx.reason!),
+                        _detailRow(
+                            Icons.help_outline, 'Reason', tx.reason!),
                       if (tx.note?.isNotEmpty == true)
-                        _detailRow(Icons.note_alt_outlined, 'Note', tx.note!),
+                        _detailRow(
+                            Icons.note_alt_outlined, 'Note', tx.note!),
                       const SizedBox(height: 16),
                     ],
 
-                    // Audit section
                     _sectionHeader('Audit'),
                     _detailRow(Icons.schedule, 'Created', _formatDate(tx.createdAt)),
                     if (tx.createdByName?.isNotEmpty == true)
-                      _detailRow(Icons.person_outline, 'Created By',
+                      _detailRow(
+                          Icons.person_outline,
+                          'Created By',
                           tx.createdByEmail?.isNotEmpty == true
                               ? '${tx.createdByName!} (${tx.createdByEmail!})'
                               : tx.createdByName!),
                     if (managerName?.isNotEmpty == true)
-                      _detailRow(Icons.manage_accounts_outlined, 'Manager', managerName!),
+                      _detailRow(Icons.manage_accounts_outlined, 'Manager',
+                          managerName!),
                     if (tx.approvedByName?.isNotEmpty == true)
-                      _detailRow(Icons.verified_user_outlined, 'Approved By', tx.approvedByName!),
+                      _detailRow(Icons.verified_user_outlined, 'Approved By',
+                          tx.approvedByName!),
                     if (tx.approvedAt != null)
-                      _detailRow(Icons.calendar_month_outlined, 'Approved At', _formatDate(tx.approvedAt!)),
+                      _detailRow(Icons.calendar_month_outlined, 'Approved At',
+                          _formatDate(tx.approvedAt!)),
                     const SizedBox(height: 16),
 
-                    // Photo
                     if (tx.photo?.isNotEmpty == true) ...[
                       _sectionHeader('Attachment'),
                       const SizedBox(height: 8),
                       InkWell(
-                        onTap: () => _showFullScreenImage(context, tx.photo!),
+                        onTap: () =>
+                            _showFullScreenImage(context, tx.photo!),
                         child: ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: _buildImageFromBase64(tx.photo!),
@@ -998,11 +930,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       const SizedBox(height: 16),
                     ],
 
-                    // Repair checklist
                     if (tx.repairReturnChecklist.isNotEmpty) ...[
                       _sectionHeader('Repair Checklist'),
                       const SizedBox(height: 4),
-                      ...tx.repairReturnChecklist.map((item) => CheckboxListTile(
+                      ...tx.repairReturnChecklist.map((item) =>
+                          CheckboxListTile(
                             dense: true,
                             contentPadding: EdgeInsets.zero,
                             value: item.completed,
@@ -1011,8 +943,12 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               item.label,
                               style: TextStyle(
                                 fontSize: 14,
-                                decoration: item.completed ? TextDecoration.lineThrough : null,
-                                color: item.completed ? Colors.grey : Colors.black87,
+                                decoration: item.completed
+                                    ? TextDecoration.lineThrough
+                                    : null,
+                                color: item.completed
+                                    ? Colors.grey
+                                    : Colors.black87,
                               ),
                             ),
                             controlAffinity: ListTileControlAffinity.leading,
@@ -1089,8 +1025,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     color: Colors.grey[800],
                     fontSize: 13)),
           ),
-          Expanded(
-              child: Text(value, style: const TextStyle(fontSize: 13))),
+          Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
         ],
       ),
     );
@@ -1136,31 +1071,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Color _getTypeColor(String type) {
     switch (type) {
-      case 'ADD':
-        return Colors.green;
-      case 'TRANSFER':
-        return Colors.blue;
-      case 'REPAIR_OUT':
-        return Colors.purple;
-      case 'REPAIR_IN':
-        return Colors.indigo;
-      case 'DISPOSE':
-        return Colors.red;
-      default:
-        return Colors.grey;
+      case 'ADD':        return Colors.green;
+      case 'TRANSFER':   return Colors.blue;
+      case 'REPAIR_OUT': return Colors.purple;
+      case 'REPAIR_IN':  return Colors.indigo;
+      case 'DISPOSE':    return Colors.red;
+      default:           return Colors.grey;
     }
   }
 
   Color _getStatusColor(String status) {
     switch (status.toLowerCase()) {
-      case 'approved':
-        return Colors.green;
-      case 'pending':
-        return Colors.orange;
-      case 'rejected':
-        return Colors.red;
-      default:
-        return Colors.blueGrey;
+      case 'approved': return Colors.green;
+      case 'pending':  return Colors.orange;
+      case 'rejected': return Colors.red;
+      default:         return Colors.blueGrey;
     }
   }
 

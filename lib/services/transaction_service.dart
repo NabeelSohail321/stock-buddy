@@ -72,6 +72,9 @@ class TransactionService {
     String? startDate,
     String? endDate,
     String? search,
+    String? locationId,
+    String? managerId,
+    String? itemId,
     int page = 1,
     int limit = 50,
   }) async {
@@ -84,6 +87,9 @@ class TransactionService {
       if (startDate != null) 'startDate': startDate,
       if (endDate != null) 'endDate': endDate,
       if (search != null) 'search': search,
+      if (locationId != null) 'locationId': locationId,
+      if (managerId != null) 'managerId': managerId,
+      if (itemId != null) 'itemId': itemId,
       'page': page.toString(),
       'limit': limit.toString(),
     };
@@ -107,6 +113,62 @@ class TransactionService {
       'currentPage': pagination['page'] ?? page,
       'totalCount': pagination['total'] ?? transactionsData.length,
     };
+  }
+
+  /// Downloads a PDF of all transactions matching the given filters.
+  /// Returns raw PDF bytes ready for [Printing.sharePdf].
+  Future<Uint8List> downloadTransactionsPdf({
+    String? category,
+    String? type,
+    String? status,
+    String? datePreset,
+    String? anchorDate,
+    String? startDate,
+    String? endDate,
+    String? search,
+    String? locationId,
+    String? managerId,
+    String? itemId,
+  }) async {
+    final queryParameters = <String, String>{
+      if (category != null) 'category': category,
+      if (type != null) 'type': type,
+      if (status != null) 'status': status,
+      if (datePreset != null) 'datePreset': datePreset,
+      if (anchorDate != null) 'anchorDate': anchorDate,
+      if (startDate != null) 'startDate': startDate,
+      if (endDate != null) 'endDate': endDate,
+      if (search != null) 'search': search,
+      if (locationId != null) 'locationId': locationId,
+      if (managerId != null) 'managerId': managerId,
+      if (itemId != null) 'itemId': itemId,
+    };
+
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/transactions/export/pdf')
+                .replace(queryParameters: queryParameters),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 60));
+
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      }
+      final body = _parseBody(response.body);
+      final message = body['error'] ?? 'Failed to download PDF (${response.statusCode})';
+      throw ServerException(message, response.statusCode);
+    } on SocketException {
+      throw const NetworkException();
+    } on TimeoutException {
+      throw const RequestTimeoutException();
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      debugPrint('[TransactionService] downloadTransactionsPdf error: $e');
+      throw AppException('Failed to download PDF. Please try again.');
+    }
   }
 
   Future<String> getTransactionExportHtml({
